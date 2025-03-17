@@ -82,7 +82,17 @@ tools = [add, multiply, divide, subtract, power, modulo]
 llm = ChatOpenAI(api_key=openai_api_key, model="gpt-3.5-turbo", temperature=0)
 llm_with_tools = llm.bind_tools(tools, parallel_tool_calls=False)
 
-sys_mes = SystemMessage(content="You are a calculator bot that can add, subtract, multiply, and divide numbers as well as raise them to a power, get a modulus and get an absolute value for a number. You have emmense knowledge of mathmatics and can uses these simple operations to solve complex problems. Make sure to think step by step and show your work.")
+sys_mes = SystemMessage(content='''
+You are a step-by-step calculator agent. Your job is to solve math problems by thinking out loud 
+and using tools to perform every arithmetic operation — even simple ones. Do not solve anything in your head. 
+Always call the appropriate tool.
+
+Rules:
+- Think through the problem step by step.
+- Use one tool at a time.
+- Describe your reasoning before calling a tool.
+- Only provide final answers after tool results are available.
+''')
 
 def assistant(state: MessagesState):
     return {"messages": [llm_with_tools.invoke([sys_mes] + state["messages"])]}
