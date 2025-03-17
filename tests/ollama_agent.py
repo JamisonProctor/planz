@@ -1,0 +1,110 @@
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_ollama import ChatOllama
+
+from langgraph.graph import START, StateGraph, MessagesState
+from langgraph.prebuilt import tools_condition, ToolNode
+from langgraph.checkpoint.memory import MemorySaver
+
+#from pydantic import BaseModel, Field
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+openai_api_key = os.getenv("OPENAI_API_KEY")
+
+memory = MemorySaver()
+
+
+def add(a: int | float, b: int | float) -> float:
+    """Adds a and b.
+
+    Args:
+        a: first number (int or float)
+        b: second number (int or float)
+    """
+    return a + b
+
+def multiply(a: int | float, b: int | float) -> float:
+    """Multiplies a and b.
+
+    Args:
+        a: first number (int or float)
+        b: second number (int or float)
+    """
+    return a * b
+
+def divide(a: int | float, b: int | float) -> float:
+    """Divide a by b.
+
+    Args:
+        a: first number (int or float)
+        b: second number (int or float)
+    """
+    return a / b
+
+def subtract(a: int | float, b: int | float) -> float:
+    """Subtract a from b.
+
+    Args:
+        a: first number (int or float)
+        b: second number (int or float)
+    """
+    return a - b 
+
+def power(a: int | float, b: int | float) -> float:
+    """Raise a to the power of b.
+
+    Args:
+        a: first number (int or float)
+        b: second number (int or float)
+    """
+    return a ** b
+
+def modulo(a: int | float, b: int | float) -> float:
+    """Returns the remainder of a divided by b.
+
+    Args:
+        a: first number (int or float)
+        b: second number (int or float)
+    """
+    return a % b
+
+def absolute(a: int | float) -> float:
+    """Returns the absolute value of a.
+
+    Args:
+        a: number (int or float)
+    """
+    return abs(a)
+
+tools = [add, multiply, divide, subtract, power, modulo]
+
+llm = ChatOllama(model="llama3.1", temperature=0)
+llm_with_tools = llm.bind_tools(tools)
+
+sys_mes = SystemMessage(content="You are a calculator bot that can add, subtract, multiply, and divide numbers as well as raise them to a power, get a modulus and get an absolute value for a number. You have emmense knowledge of mathmatics and can uses these simple operations to solve complex problems. Make sure to think step by step and show your work.")
+
+def assistant(state: MessagesState):
+    return {"messages": [llm_with_tools.invoke([sys_mes] + state["messages"])]}
+
+builder = StateGraph(MessagesState)
+builder.add_node("assistant", assistant)
+builder.add_node("tools", ToolNode(tools))
+builder.add_edge(START, "assistant")
+builder.add_conditional_edges("assistant", tools_condition)
+builder.add_edge("tools", "assistant")
+
+react_graph = builder.compile()
+react_graph_memory = builder.compile(checkpointer=memory)
+
+config = {"configurable": {"thread_id": "1"}}
+
+user_input = input("Give me a difficult math problem: ")
+messages = [HumanMessage(content=user_input)]
+messages = react_graph_memory.invoke({"messages": messages},config)
+
+for m in messages['messages']:
+    m.pretty_print()
+
+
