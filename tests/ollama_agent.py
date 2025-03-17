@@ -118,7 +118,8 @@ react_graph_memory = builder.compile(checkpointer=memory)
 
 config = {"configurable": {"thread_id": "42"}}
 
-user_input = "The distance between two towns is 380 km. At the same moment, a passenger car and a truck start moving towards each other from different towns. They meet 4 hours later. If the car drives 5 km/hr faster than the truck, what are their speeds? Help me find the speeds of the car and the truck."
+user_input = input("Give me a difficult math problem: ")
+#user_input = "The distance between two towns is 380 km. At the same moment, a passenger car and a truck start moving towards each other from different towns. They meet 4 hours later. If the car drives 5 km/hr faster than the truck, what are their speeds? Help me find the speeds of the car and the truck."
 messages = [HumanMessage(content=user_input)]
 messages = react_graph_memory.invoke({"messages": messages}, config)
 
