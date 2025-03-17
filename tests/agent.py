@@ -1,4 +1,4 @@
-from langchain_core.messages import SystemMessage  
+from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 
 from langgraph.graph import START, StateGraph, MessagesState
@@ -13,7 +13,7 @@ load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 memory = MemorySaver()
-react_graph_mem
+
 
 def add(a: int | float, b: int | float) -> float:
     """Adds a and b.
@@ -34,7 +34,7 @@ def multiply(a: int | float, b: int | float) -> float:
     return a * b
 
 def divide(a: int | float, b: int | float) -> float:
-    """Divide a and b.
+    """Divide a by b.
 
     Args:
         a: first number (int or float)
@@ -79,10 +79,10 @@ def absolute(a: int | float) -> float:
 
 tools = [add, multiply, divide, subtract, power, modulo]
 
-llm = ChatOpenAI(api_key=openai_api_key, model="gpt-3.5-turbo")
-llm_with_tools = llm.bind_tools(tools)
+llm = ChatOpenAI(api_key=openai_api_key, model="gpt-3.5-turbo", temperature=0)
+llm_with_tools = llm.bind_tools(tools, parallel_tool_calls=False)
 
-sys_mes = SystemMessage(content="You are a calculator bot that can add, subtract, multiply, and divide numbers, but you have emmense knowledge of mathmatics and can uses these simple operations to solve complex problems. You can also chat with people and help them with their math")
+sys_mes = SystemMessage(content="You are a calculator bot that can add, subtract, multiply, and divide numbers as well as raise them to a power, get a modulus and get an absolute value for a number. You have emmense knowledge of mathmatics and can uses these simple operations to solve complex problems. Make sure to think step by step and show your work.")
 
 def assistant(state: MessagesState):
     return {"messages": [llm_with_tools.invoke([sys_mes] + state["messages"])]}
@@ -91,6 +91,19 @@ builder = StateGraph(MessagesState)
 builder.add_node("assistant", assistant)
 builder.add_node("tools", ToolNode(tools))
 builder.add_edge(START, "assistant")
-builder.add_edge("assistant", tools_condition)
+builder.add_conditional_edges("assistant", tools_condition)
 builder.add_edge("tools", "assistant")
+
+react_graph = builder.compile()
+react_graph_memory = builder.compile(checkpointer=memory)
+
+config = {"configurable": {"thread_id": "1"}}
+
+user_input = input("Give me a difficult math problem: ")
+messages = [HumanMessage(content=user_input)]
+messages = react_graph_memory.invoke({"messages": messages},config)
+
+for m in messages['messages']:
+    m.pretty_print()
+
 
