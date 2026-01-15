@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.core.env import load_env
 from app.db.session import get_session
+from app.logging import configure_logging
 from app.services.discovery.store_sources import store_discovered_sources
 from app.services.llm.client import discover_munich_kids_event_sources
 
 
 def main() -> None:
+    load_env()
+    configure_logging()
     sources = discover_munich_kids_event_sources()
 
     now = datetime.now(tz=timezone.utc)

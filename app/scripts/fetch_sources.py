@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 
 from sqlalchemy import select
 
+from app.core.env import load_env
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.db.session import get_session
+from app.logging import configure_logging
 from app.services.fetch.http_fetcher import fetch_url_text
 from app.services.fetch.store_fetch_result import store_fetch_result
 
+logger = logging.getLogger(__name__)
 
-def run_fetch_sources() -> tuple[int, int]:
+
+def run_fetch_sources() -> dict[str, int]:
     ok_count = 0
     error_count = 0
     now = datetime.now(tz=timezone.utc)
@@ -31,6 +36,11 @@ def run_fetch_sources() -> tuple[int, int]:
             if text is not None:
                 ok_count += 1
             else:
+                logger.error(
+                    "Fetch failed for url=%s error=%s",
+                    source_url.url,
+                    error,
+                )
                 error_count += 1
 
         session.commit()
@@ -40,13 +50,15 @@ def run_fetch_sources() -> tuple[int, int]:
         except StopIteration:
             pass
 
-    return ok_count, error_count
+    return {"fetched_ok": ok_count, "fetched_error": error_count}
 
 
 def main() -> None:
-    ok_count, error_count = run_fetch_sources()
-    print(f"Fetched OK: {ok_count}")
-    print(f"Fetched errors: {error_count}")
+    load_env()
+    configure_logging()
+    stats = run_fetch_sources()
+    print(f"Fetched OK: {stats['fetched_ok']}")
+    print(f"Fetched errors: {stats['fetched_error']}")
 
 
 if __name__ == "__main__":

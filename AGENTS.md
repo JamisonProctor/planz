@@ -130,8 +130,22 @@ Agents must **propose** commit messages but never run git commands.
 - Secrets must NEVER be committed
 - Required environment variables:
   - `OPENAI_API_KEY` (only required for real extraction or discovery runs)
+  - `GOOGLE_CALENDAR_ID` (defaults to `primary` if omitted)
 - Google Calendar credentials:
   - `credentials.json` and `token.json` are local-only
+- `.env` is supported via `python-dotenv`; scripts load environment automatically
+
+---
+
+## Pipeline Observability
+
+Weekly runs must print a clear summary, even on no-op runs. At minimum:
+- Source URL inventory (total / allowed / disabled)
+- Fetch counts and error hints
+- Extraction counts with skip reasons (no content, unchanged hash, disabled domain)
+- Sync counts with skip reasons (already synced, past)
+
+If a run does no work, the reason must be explicit (e.g., no sources, missing key, unchanged hashes).
 
 ---
 
