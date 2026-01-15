@@ -38,6 +38,11 @@ class SourceUrl(Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     content_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_extracted_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_extracted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     discovery_method: Mapped[str] = mapped_column(String(50), default="llm_search")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
