@@ -30,6 +30,14 @@ class SourceUrl(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(tz=timezone.utc),
     )
+    last_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    fetch_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    content_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     discovery_method: Mapped[str] = mapped_column(String(50), default="llm_search")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
