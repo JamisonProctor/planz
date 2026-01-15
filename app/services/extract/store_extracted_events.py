@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models.event import Event
 from app.db.models.source_url import SourceUrl
 
+logger = logging.getLogger(__name__)
 
 def store_extracted_events(
     session: Session,
@@ -32,6 +34,11 @@ def store_extracted_events(
         location = _as_str(item.get("location")) or None
 
         if not title or not start_time:
+            logger.info(
+                "Skipping extracted item for url=%s reason=missing_title_or_start item=%s",
+                source_url.url,
+                _truncate_item(item),
+            )
             continue
 
         if end_time is None:
@@ -73,3 +80,10 @@ def _parse_datetime(value: Any, tz: ZoneInfo) -> datetime | None:
         parsed = parsed.replace(tzinfo=tz)
 
     return parsed
+
+
+def _truncate_item(item: Any, limit: int = 200) -> str:
+    text = str(item)
+    if len(text) > limit:
+        return f"{text[:limit]}..."
+    return text

@@ -5,36 +5,39 @@ from datetime import datetime, timezone
 from app.core.env import load_env
 from app.db.session import get_session
 from app.logging import configure_logging
-from app.services.discovery.store_sources import store_discovered_sources
+from app.services.discovery.discover_sources import discover_and_store_sources
 from app.services.llm.client import discover_munich_kids_event_sources
 
 
 def main() -> None:
     load_env()
     configure_logging()
-    sources = discover_munich_kids_event_sources()
-
     now = datetime.now(tz=timezone.utc)
 
     session_gen = get_session()
     session = next(session_gen)
     try:
-        result = store_discovered_sources(session, sources, now)
+        result = discover_and_store_sources(
+            session,
+            llm_client=discover_munich_kids_event_sources,
+            now=now,
+        )
     finally:
         try:
             next(session_gen)
         except StopIteration:
             pass
 
-    print(f"Sources returned by LLM: {result['total_returned']}")
-    print(f"New domains added: {result['new_domains']}")
-    print(f"New URLs added: {result['new_urls']}")
-    print(f"Existing URLs updated: {result['updated_urls']}")
-
-    print("Top 10 active URLs:")
-    for domain_str, url, name in result["active_urls"][:10]:
-        label = name or "(no name)"
-        print(f"- {domain_str} | {url} | {label}")
+    rejected = result["rejected"]
+    print(f"Candidates returned: {result['total_candidates']}")
+    print(f"Accepted: {result['accepted']}")
+    print(
+        "Rejected: blocked_domain={blocked_domain}, fetch_failed={fetch_failed}, "
+        "too_short={too_short}, not_event_like={not_event_like}".format(**rejected)
+    )
+    print("Top accepted URLs:")
+    for url in result["accepted_urls"][:10]:
+        print(f"- {url}")
 
 
 if __name__ == "__main__":

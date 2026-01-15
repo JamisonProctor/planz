@@ -43,6 +43,9 @@ class SourceUrl(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    last_extraction_count: Mapped[int | None] = mapped_column(nullable=True)
+    last_extraction_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    last_extraction_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     discovery_method: Mapped[str] = mapped_column(String(50), default="llm_search")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

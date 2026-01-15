@@ -114,7 +114,7 @@ def run_weekly_pipeline(
         print("OPENAI_API_KEY missing: extraction skipped.")
         extract_stats = {
             "sources_processed": 0,
-            "events_created": 0,
+            "events_created_total": 0,
             "sources_skipped_no_content": extraction_inventory[
                 "sources_skipped_no_content"
             ],
@@ -124,6 +124,8 @@ def run_weekly_pipeline(
             "sources_skipped_disabled_domain": extraction_inventory[
                 "sources_skipped_disabled_domain"
             ],
+            "sources_empty_extraction": 0,
+            "sources_error_extraction": 0,
         }
     else:
         extract_stats = extract_runner()
@@ -144,7 +146,7 @@ def run_weekly_pipeline(
     print(f"Fetched OK: {fetch_stats['fetched_ok']}")
     print(f"Fetched errors: {fetch_stats['fetched_error']}")
     print(f"Sources processed: {extract_stats['sources_processed']}")
-    print(f"Events created: {extract_stats['events_created']}")
+    print(f"Events created: {extract_stats['events_created_total']}")
     print(
         f"Sources skipped (no content): {extract_stats['sources_skipped_no_content']}"
     )
@@ -153,6 +155,12 @@ def run_weekly_pipeline(
     )
     print(
         f"Sources skipped (disabled domain): {extract_stats['sources_skipped_disabled_domain']}"
+    )
+    print(
+        f"Sources empty extraction: {extract_stats['sources_empty_extraction']}"
+    )
+    print(
+        f"Sources error extraction: {extract_stats['sources_error_extraction']}"
     )
     print(f"Events synced: {synced}")
     print(

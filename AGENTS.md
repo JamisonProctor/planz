@@ -29,6 +29,8 @@ The system is a **multi-stage pipeline**:
    - LLM-assisted discovery of candidate event source URLs
    - Stored in `SourceDomain` and `SourceUrl`
    - Per-domain kill switch (`is_allowed`) is mandatory
+   - Discovery verification gate: only store URLs that are fetchable and event-like
+   - Domain blocklist for v1: Meetup/Eventbrite are blocked
 
 2. **Fetch**  
    - Fetch raw page content for allowed SourceUrls
@@ -39,6 +41,7 @@ The system is a **multi-stage pipeline**:
    - LLM-based extraction of IRL events from fetched content
    - Idempotent via content hash comparison
    - Produces structured `Event` rows
+   - Extraction stats persisted per `SourceUrl` (status/count/error)
 
 4. **Calendar Sync**  
    - Sync only *future, unsynced* events to Google Calendar
