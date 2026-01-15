@@ -4,6 +4,8 @@
 .env
 .env.*
 !.env.example
+token.json
+credentials.json
 
 # =========================
 # Python
@@ -13,6 +15,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.so
+*.db
 *.egg-info/
 .eggs/
 build/
