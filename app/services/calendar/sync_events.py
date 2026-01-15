@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from app.db.models.calendar_sync import CalendarSync
 from app.db.models.event import Event
 from app.services.calendar.mapper import event_to_calendar_event
 
+logger = logging.getLogger(__name__)
 
 def sync_unsynced_events(
     session: Session,
@@ -29,7 +31,12 @@ def sync_unsynced_events(
     synced = 0
     for event in events:
         calendar_event = event_to_calendar_event(event)
-        calendar_event_id = calendar_client.upsert_event(calendar_event)
+        try:
+            calendar_event_id = calendar_client.upsert_event(calendar_event)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to sync event id=%s: %s", event.id, exc, exc_info=True)
+            continue
+
         session.add(
             CalendarSync(
                 event_id=event.id,

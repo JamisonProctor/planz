@@ -10,7 +10,7 @@ from app.services.extract.llm_event_extractor import extract_events_from_text
 from app.services.extract.store_extracted_events import store_extracted_events
 
 
-def main() -> None:
+def run_extract_events() -> tuple[int, int]:
     now = datetime.now(tz=timezone.utc)
     total_sources = 0
     total_events = 0
@@ -27,6 +27,11 @@ def main() -> None:
 
         for source_url in sources:
             total_sources += 1
+            if (
+                source_url.content_hash
+                and source_url.last_extracted_hash == source_url.content_hash
+            ):
+                continue
             extracted = extract_events_from_text(
                 source_url.content_excerpt or "", source_url.url
             )
@@ -40,6 +45,11 @@ def main() -> None:
         except StopIteration:
             pass
 
+    return total_sources, total_events
+
+
+def main() -> None:
+    total_sources, total_events = run_extract_events()
     print(f"Sources processed: {total_sources}")
     print(f"Events created: {total_events}")
 

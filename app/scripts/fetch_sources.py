@@ -11,7 +11,7 @@ from app.services.fetch.http_fetcher import fetch_url_text
 from app.services.fetch.store_fetch_result import store_fetch_result
 
 
-def main() -> None:
+def run_fetch_sources() -> tuple[int, int]:
     ok_count = 0
     error_count = 0
     now = datetime.now(tz=timezone.utc)
@@ -40,6 +40,11 @@ def main() -> None:
         except StopIteration:
             pass
 
+    return ok_count, error_count
+
+
+def main() -> None:
+    ok_count, error_count = run_fetch_sources()
     print(f"Fetched OK: {ok_count}")
     print(f"Fetched errors: {error_count}")
 
