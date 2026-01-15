@@ -1,43 +1,178 @@
-# Repository Guidelines
+# Repository Guidelines (AGENTS.md)
 
-## Project Structure & Module Organization
-The repository is currently minimal. At the root you will find:
-- `.env.example` for required environment variables.
-- `.gitignore` for common Python/Node/tooling ignores.
+This document defines **non-negotiable rules** for humans and coding agents working in this repository.
+If behavior, architecture, or workflow changes, this file MUST be updated accordingly.
 
-When adding code, keep a clean, predictable layout. Recommended structure:
-- `src/` for application code.
-- `tests/` for automated tests.
-- `scripts/` for maintenance or dev helpers.
-- `docs/` for design notes or architecture docs.
+---
 
-## Build, Test, and Development Commands
-No build or test scripts are committed yet. If you add tooling, document it in `README.md` and prefer standard entry points:
-- `make dev` / `make test` if you add a `Makefile`.
-- `python -m venv .venv` and `pip install -r requirements.txt` if this is a Python project.
-- `npm install` and `npm test` if a `package.json` is introduced.
+## Project Overview
 
-## Coding Style & Naming Conventions
-Be explicit and consistent:
-- Python: 4-space indentation, snake_case for functions and variables.
-- JS/TS (if added): 2-space indentation, camelCase for functions and variables.
-- Name modules by feature (`src/billing/`, `src/auth/`) rather than by type.
+PLANZ is a **calendar delivery pipeline** for real-world events.
 
-If you introduce formatters or linters (e.g., `ruff`, `black`, `eslint`), add configs to the repo and keep them in CI.
+Core principle:
+> We do not build an event directory.  
+> We deliver relevant events directly into calendars, reliably and idempotently.
 
-## Testing Guidelines
-No test framework is configured yet. If you add tests:
-- Python: use `pytest` and name files `tests/test_*.py`.
-- JS/TS: use `vitest` or `jest` with `*.test.ts`/`*.test.js` naming.
-Prefer fast, deterministic tests and cover new behavior with focused cases.
+The system is designed to evolve into a commercial service. Decisions should favor:
+- correctness
+- traceability
+- cost control
+- extensibility
 
-## Commit & Pull Request Guidelines
-Git history uses short, imperative, sentence-case messages (e.g., "Add base .gitignore and env template"). Follow that style.
+---
 
-PRs should include:
-- What changed and why.
-- How to run or verify (commands or manual steps).
-- Notes on config changes (e.g., `.env.example` updates) and any required migrations.
+## Architecture Overview
 
-## Security & Configuration Tips
-Never commit secrets. Add new variables to `.env.example` with safe placeholders and document required values in the PR.
+The system is a **multi-stage pipeline**:
+
+1. **Discovery**  
+   - LLM-assisted discovery of candidate event source URLs
+   - Stored in `SourceDomain` and `SourceUrl`
+   - Per-domain kill switch (`is_allowed`) is mandatory
+
+2. **Fetch**  
+   - Fetch raw page content for allowed SourceUrls
+   - Persist fetch metadata, hashes, and excerpts
+   - Never refetch unnecessarily
+
+3. **Extraction**  
+   - LLM-based extraction of IRL events from fetched content
+   - Idempotent via content hash comparison
+   - Produces structured `Event` rows
+
+4. **Calendar Sync**  
+   - Sync only *future, unsynced* events to Google Calendar
+   - Persist `CalendarSync` records for idempotency
+   - Never spam calendars
+
+5. **Orchestration**
+   - `run_weekly.py` executes: fetch → extract → sync
+   - Designed for scheduled execution (cron / GitHub Actions later)
+
+---
+
+## Project Structure
+
+Current canonical structure:
+
+app/
+core/            # Pure utilities (URLs, parsing, etc.)
+db/
+base.py
+session.py
+models/
+services/
+discovery/
+fetch/
+extract/
+calendar/
+scripts/
+llm_discover_sources.py
+fetch_sources.py
+extract_events.py
+run_weekly.py
+tests/
+
+Rules:
+- Services contain **business logic**
+- Scripts are **thin orchestration layers**
+- No LLM, HTTP, or Google API calls inside tests
+
+---
+
+## Testing (MANDATORY)
+
+**Test-Driven Development is required for all changes.**
+
+Rules:
+- Write tests FIRST
+- Tests must fail before implementation
+- All tests must pass before committing
+- Use pytest exclusively
+- Tests must be deterministic and offline
+
+Strict prohibitions:
+- ❌ No real OpenAI calls in tests
+- ❌ No real HTTP calls in tests
+- ❌ No real Google API calls in tests
+
+Use mocks, fakes, or stubs.
+
+---
+
+## Timezones & Datetimes
+
+- Application logic uses **timezone-aware datetimes**
+- SQLite may coerce to naive — tests must account for this
+- Commit/flush boundaries matter; avoid hidden coercion
+
+Be explicit and consistent.
+
+---
+
+## Commit Discipline
+
+- Use **Conventional Commits**
+  - `feat:`
+  - `fix:`
+  - `test:`
+  - `refactor:`
+  - `chore:`
+- One logical change per commit
+- Commits must correspond to **user-visible behavior or guarantees**
+
+Agents must **propose** commit messages but never run git commands.
+
+---
+
+## Environment & Secrets
+
+- Secrets must NEVER be committed
+- Required environment variables:
+  - `OPENAI_API_KEY` (only required for real extraction or discovery runs)
+- Google Calendar credentials:
+  - `credentials.json` and `token.json` are local-only
+
+---
+
+## Agent Responsibilities (CRITICAL)
+
+Any coding agent operating in this repo MUST:
+
+1. Follow TDD strictly
+2. Avoid unnecessary refactors
+3. Preserve existing behavior unless tests reveal a bug
+4. **Update this AGENTS.md file when:**
+   - workflow rules change
+   - architectural stages change
+   - testing rules change
+   - new non-obvious constraints are introduced
+
+If unsure, ASK before changing behavior.
+
+Failure to update AGENTS.md when required is considered a defect.
+
+---
+
+IMPORTANT (PROCESS RULES):
+
+- We use strict Test-Driven Development (tests first, then implementation).
+- No real network, OpenAI, or Google API calls in tests.
+- You must NOT run git commands.
+
+AGENTS.md RULE:
+If your changes introduce or modify:
+- workflow rules
+- architectural stages
+- testing expectations
+- agent responsibilities
+- non-obvious constraints
+
+Then you MUST update AGENTS.md as part of this change.
+
+At the very end of your response, include:
+
+COMMIT MESSAGE:
+<one concise Conventional Commit message>
+
+Do NOT include anything after the commit message.
