@@ -6,9 +6,10 @@ import logging
 from sqlalchemy import select
 
 from app.core.env import load_env
+from app.db.migrations.sqlite import ensure_sqlite_schema
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
-from app.db.session import get_session
+from app.db.session import engine, get_session
 from app.logging import configure_logging
 from app.services.fetch.http_fetcher import fetch_url_text
 from app.services.fetch.store_fetch_result import store_fetch_result
@@ -56,6 +57,7 @@ def run_fetch_sources() -> dict[str, int]:
 def main() -> None:
     load_env()
     configure_logging()
+    ensure_sqlite_schema(engine)
     stats = run_fetch_sources()
     print(f"Fetched OK: {stats['fetched_ok']}")
     print(f"Fetched errors: {stats['fetched_error']}")

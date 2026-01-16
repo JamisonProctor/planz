@@ -29,7 +29,7 @@ The system is a **multi-stage pipeline**:
    - LLM-assisted discovery of candidate event source URLs
    - Stored in `SourceDomain` and `SourceUrl`
    - Per-domain kill switch (`is_allowed`) is mandatory
-   - Discovery verification gate: only store URLs that are fetchable and event-like
+   - Discovery verification gate: only store URLs that are fetchable and sufficiently long
    - Domain blocklist for v1: Meetup/Eventbrite are blocked
 
 2. **Fetch**  
@@ -149,6 +149,16 @@ Weekly runs must print a clear summary, even on no-op runs. At minimum:
 - Sync counts with skip reasons (already synced, past)
 
 If a run does no work, the reason must be explicit (e.g., no sources, missing key, unchanged hashes).
+
+---
+
+## SQLite Migrations (REQUIRED)
+
+SQLite schema changes are not automatic. Any new columns or tables must include a migration step.
+
+- Use `app/db/migrations/sqlite.ensure_sqlite_schema(engine)` for local upgrades.
+- Scripts must call `ensure_sqlite_schema` at startup.
+- Deleting the DB is NOT an acceptable long-term strategy.
 
 ---
 

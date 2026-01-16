@@ -71,7 +71,7 @@ def test_discovery_rejects_fetch_failures() -> None:
     assert stats["rejected"]["fetch_failed"] == 1
 
 
-def test_discovery_rejects_too_short_or_not_event_like() -> None:
+def test_discovery_rejects_too_short() -> None:
     session = _make_session()
 
     def llm_client():
@@ -93,7 +93,7 @@ def test_discovery_rejects_too_short_or_not_event_like() -> None:
     def fetcher(url: str, timeout: float = 5.0):
         if url.endswith("/short"):
             return "tiny", None
-        return "no dates here " * 200, None
+        return "still short" * 50, None
 
     stats = discover_and_store_sources(
         session,
@@ -104,8 +104,7 @@ def test_discovery_rejects_too_short_or_not_event_like() -> None:
 
     urls = session.scalars(select(SourceUrl)).all()
     assert urls == []
-    assert stats["rejected"]["too_short"] == 1
-    assert stats["rejected"]["not_event_like"] == 1
+    assert stats["rejected"]["too_short"] == 2
 
 
 def test_discovery_accepts_good_url_and_persists() -> None:

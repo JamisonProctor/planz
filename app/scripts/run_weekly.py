@@ -11,7 +11,8 @@ from app.db.models.calendar_sync import CalendarSync
 from app.db.models.event import Event
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
-from app.db.session import get_session
+from app.db.migrations.sqlite import ensure_sqlite_schema
+from app.db.session import engine, get_session
 from app.logging import configure_logging
 from app.scripts.extract_events import run_extract_events
 from app.scripts.fetch_sources import run_fetch_sources
@@ -180,6 +181,7 @@ def run_weekly_pipeline(
 def main() -> None:
     load_env()
     configure_logging()
+    ensure_sqlite_schema(engine)
 
     now = datetime.now(tz=timezone.utc)
     session_gen = get_session()
