@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.db.models.source_domain import SourceDomain
+    from app.db.models.source_url_discovery import SourceUrlDiscovery
 
 
 class SourceUrl(Base):
@@ -50,3 +51,6 @@ class SourceUrl(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     domain: Mapped[SourceDomain] = relationship(back_populates="urls")
+    discoveries: Mapped[list[SourceUrlDiscovery]] = relationship(
+        back_populates="source_url"
+    )

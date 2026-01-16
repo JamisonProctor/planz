@@ -25,13 +25,13 @@ The system is designed to evolve into a commercial service. Decisions should fav
 
 The system is a **multi-stage pipeline**:
 
-1. **Discovery**  
-   - LLM-assisted discovery of candidate event source URLs
-   - Stored in `SourceDomain` and `SourceUrl`
-   - Per-domain kill switch (`is_allowed`) is mandatory
-   - Discovery verification gate: only store URLs that are fetchable and sufficiently long
+1. **Search + Verify**  
+   - OpenAI Responses API web_search provider (via abstraction)
+   - DE+EN multi-query bundle (`kostenlos`/`free`, `München`/`Munich`)
+   - SearchRun/SearchQuery/SearchResult stored for provenance
+   - SourceUrl provenance recorded via SearchResult linkage
+   - Verification gate: blocked domains, fetchable, min length, date tokens, no archive signals
    - Prefer URLs with terms like `termine`/`kalender`/`veranstaltungen`/`programm`
-   - Reject sources with archive/past signals (`Archiv`, `Rückblick`, past years)
    - Domain blocklist for v1: Meetup/Eventbrite are blocked
 
 2. **Fetch**  
@@ -55,8 +55,9 @@ The system is a **multi-stage pipeline**:
    - No grace window in production; recent-past syncing is disabled
 
 5. **Orchestration**
-   - `run_weekly.py` executes: fetch → extract → sync
+   - `run_weekly.py` executes: search → verify → fetch → extract → sync
    - Designed for scheduled execution (cron / GitHub Actions later)
+   - Search can be disabled with `PLANZ_ENABLE_SEARCH=false`
 
 ---
 

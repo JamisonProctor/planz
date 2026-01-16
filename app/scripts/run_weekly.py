@@ -18,6 +18,9 @@ from app.scripts.extract_events import run_extract_events
 from app.scripts.fetch_sources import run_fetch_sources
 from app.services.calendar.google_calendar_service import GoogleCalendarClient
 from app.services.calendar.sync_events import sync_unsynced_events
+from app.services.search.seed_sources import search_and_seed_sources
+from app.services.search.openai_web_search import OpenAIWebSearchProvider
+from app.services.fetch.http_fetcher import fetch_url_text
 
 
 def _source_inventory(session) -> dict[str, int]:
@@ -91,11 +94,54 @@ def _sync_inventory(session, now: datetime) -> dict[str, int]:
 def run_weekly_pipeline(
     session,
     now: datetime,
+    search_runner=None,
+    search_provider_factory=OpenAIWebSearchProvider,
     fetch_runner=run_fetch_sources,
     extract_runner=run_extract_events,
     sync_runner=sync_unsynced_events,
     calendar_client_factory=GoogleCalendarClient,
 ) -> dict[str, int]:
+    if search_runner is None:
+        search_runner = search_and_seed_sources
+
+    search_enabled = os.getenv("PLANZ_ENABLE_SEARCH", "true").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+    }
+
+    search_stats = {
+        "queries_executed": 0,
+        "total_results": 0,
+        "unique_candidates": 0,
+        "accepted": 0,
+        "rejected": {
+            "blocked_domain": 0,
+            "fetch_failed": 0,
+            "too_short": 0,
+            "no_date_tokens": 0,
+            "archive_signals": 0,
+        },
+    }
+
+    if search_enabled:
+        if search_provider_factory is None:
+            search_stats = search_runner()
+        else:
+            provider = search_provider_factory()
+            search_stats = search_runner(
+                session=session,
+                provider_search=provider.search,
+                fetcher=fetch_url_text,
+                now=now,
+                location="Munich, Germany",
+                window_days=30,
+            )
+        search_stats = _normalize_search_stats(search_stats)
+        print(
+            "Search results: queries={queries_executed} results={total_results} "
+            "candidates={unique_candidates} accepted={accepted}".format(**search_stats)
+        )
     inventory = _source_inventory(session)
     print(
         "Source URLs total: {total}, allowed: {allowed}, disabled: {disabled}".format(
@@ -185,6 +231,26 @@ def run_weekly_pipeline(
         **sync_stats,
         "events_synced": sync_stats["synced_count"],
     }
+
+
+def _normalize_search_stats(search_stats: dict) -> dict:
+    defaults = {
+        "queries_executed": 0,
+        "total_results": 0,
+        "unique_candidates": 0,
+        "accepted": 0,
+        "rejected": {
+            "blocked_domain": 0,
+            "fetch_failed": 0,
+            "too_short": 0,
+            "no_date_tokens": 0,
+            "archive_signals": 0,
+        },
+    }
+    merged = {**defaults, **search_stats}
+    if "rejected" in search_stats:
+        merged["rejected"] = {**defaults["rejected"], **search_stats["rejected"]}
+    return merged
 
 
 def main() -> None:
