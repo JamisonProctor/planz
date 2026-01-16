@@ -27,6 +27,7 @@ def extract_and_store_for_sources(
         "sources_skipped_disabled_domain": 0,
         "sources_empty_extraction": 0,
         "sources_error_extraction": 0,
+        "sources_past_only": 0,
     }
 
     force_extract = is_force_extract_enabled()
@@ -72,16 +73,21 @@ def extract_and_store_for_sources(
             stats["sources_error_extraction"] += 1
             continue
 
-        created = store_extracted_events(
+        result = store_extracted_events(
             session,
             source_url,
             extracted,
             now=now,
             force_extract=force_extract,
         )
+        created = result["created"]
         stats["events_created_total"] += created
 
-        if created == 0:
+        if created == 0 and result["discarded_past"] > 0 and result["invalid"] == 0:
+            source_url.last_extraction_status = "past_only"
+            source_url.last_extraction_count = 0
+            stats["sources_past_only"] += 1
+        elif created == 0:
             source_url.last_extraction_status = "empty"
             source_url.last_extraction_count = 0
             stats["sources_empty_extraction"] += 1

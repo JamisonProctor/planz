@@ -35,6 +35,7 @@ def test_run_weekly_reports_no_sources(capsys) -> None:
             "sources_skipped_disabled_domain": 0,
             "sources_empty_extraction": 0,
             "sources_error_extraction": 0,
+            "sources_past_only": 0,
         }
 
     def sync_runner(*args, **kwargs):
@@ -123,6 +124,7 @@ def test_extraction_skip_reason_unchanged_hash_reported(capsys) -> None:
             "sources_skipped_disabled_domain": 0,
             "sources_empty_extraction": 0,
             "sources_error_extraction": 0,
+            "sources_past_only": 0,
         }
 
     def sync_runner(*args, **kwargs):

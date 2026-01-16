@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -41,8 +41,10 @@ def test_force_extract_overrides_hash_skip(monkeypatch) -> None:
     monkeypatch.setenv("PLANZ_FORCE_EXTRACT", "true")
 
     def extractor(text: str, source_url: str):
+        now = datetime.now(tz=timezone.utc)
+        future_start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
         return [
-            {"title": "A", "start_time": "2024-01-02T10:00:00+01:00"}
+            {"title": "A", "start_time": future_start}
         ]
 
     stats = extract_and_store_for_sources(
@@ -63,8 +65,10 @@ def test_force_extract_disabled_keeps_idempotency(monkeypatch) -> None:
     monkeypatch.delenv("PLANZ_FORCE_EXTRACT", raising=False)
 
     def extractor(text: str, source_url: str):
+        now = datetime.now(tz=timezone.utc)
+        future_start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
         return [
-            {"title": "A", "start_time": "2024-01-02T10:00:00+01:00"}
+            {"title": "A", "start_time": future_start}
         ]
 
     stats = extract_and_store_for_sources(

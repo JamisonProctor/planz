@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.event import Event
 from app.db.models.source_url import SourceUrl
+from app.services.extract.weekend_slicer import derive_weekend_events
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +19,19 @@ def store_extracted_events(
     extracted_events: list[dict[str, Any]],
     now: datetime,
     force_extract: bool = False,
-) -> int:
+) -> dict[str, int]:
     if (
         not force_extract
         and source_url.content_hash
         and source_url.last_extracted_hash == source_url.content_hash
     ):
-        return 0
+        return {"created": 0, "discarded_past": 0, "invalid": 0}
 
     created = 0
+    discarded_past = 0
+    invalid = 0
     tz = ZoneInfo("Europe/Berlin")
+    today = now.astimezone(tz).date()
 
     for item in extracted_events:
         if not isinstance(item, dict):
@@ -44,27 +48,74 @@ def store_extracted_events(
                 source_url.url,
                 _truncate_item(item),
             )
+            invalid += 1
             continue
 
         if end_time is None:
             end_time = start_time
 
-        event = Event(
-            title=title,
-            start_time=start_time,
-            end_time=end_time,
-            location=location,
-            description=None,
-            source_url=source_url.url,
-        )
-        session.add(event)
-        created += 1
+        derived_events = []
+        if end_time.date() > start_time.date():
+            derived_events = derive_weekend_events(
+                title=title,
+                start_time=start_time,
+                end_time=end_time,
+                location=location,
+                description=None,
+                source_url=source_url.url,
+            )
+            if not derived_events:
+                logger.info(
+                    "Skipping multi-day event with no weekend days url=%s item=%s",
+                    source_url.url,
+                    _truncate_item(item),
+                )
+                invalid += 1
+                continue
+        else:
+            derived_events = [
+                {
+                    "title": title,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "location": location,
+                    "description": None,
+                    "source_url": source_url.url,
+                }
+            ]
+
+        for derived in derived_events:
+            if derived["end_time"].astimezone(tz).date() < today:
+                discarded_past += 1
+                continue
+
+            event = Event(
+                title=derived["title"],
+                start_time=derived["start_time"],
+                end_time=derived["end_time"],
+                location=derived["location"],
+                description=derived["description"],
+                source_url=derived["source_url"],
+            )
+            session.add(event)
+            created += 1
 
     source_url.last_extracted_hash = source_url.content_hash
     source_url.last_extracted_at = now
     session.add(source_url)
 
-    return created
+    if discarded_past > 0:
+        logger.info(
+            "Discarded %s past events from url=%s",
+            discarded_past,
+            source_url.url,
+        )
+
+    return {
+        "created": created,
+        "discarded_past": discarded_past,
+        "invalid": invalid,
+    }
 
 
 def _as_str(value: Any) -> str:

@@ -17,7 +17,7 @@ def sync_unsynced_events(
     calendar_client,
     now: datetime,
     limit: int = 50,
-    grace_hours: int = 12,
+    grace_hours: int = 0,
 ) -> dict[str, int]:
     grace_cutoff = now - timedelta(hours=grace_hours)
     skipped_already_synced = session.scalar(

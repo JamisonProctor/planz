@@ -30,6 +30,8 @@ The system is a **multi-stage pipeline**:
    - Stored in `SourceDomain` and `SourceUrl`
    - Per-domain kill switch (`is_allowed`) is mandatory
    - Discovery verification gate: only store URLs that are fetchable and sufficiently long
+   - Prefer URLs with terms like `termine`/`kalender`/`veranstaltungen`/`programm`
+   - Reject sources with archive/past signals (`Archiv`, `Rückblick`, past years)
    - Domain blocklist for v1: Meetup/Eventbrite are blocked
 
 2. **Fetch**  
@@ -42,12 +44,15 @@ The system is a **multi-stage pipeline**:
    - Idempotent via content hash comparison
    - Produces structured `Event` rows
    - Extraction stats persisted per `SourceUrl` (status/count/error)
+   - Future-only: events ending before today are discarded
+   - Multi-day events with weekends are sliced into Saturday/Sunday only (v1)
+   - Weekday inclusion may become a user preference later
 
 4. **Calendar Sync**  
    - Sync only *future, unsynced* events to Google Calendar
-   - Persist `CalendarSync` records for idempotency
-   - Never spam calendars
-   - Prototype grace window: recent past events (within configured hours) may sync
+    - Persist `CalendarSync` records for idempotency
+    - Never spam calendars
+   - No grace window in production; recent-past syncing is disabled
 
 5. **Orchestration**
    - `run_weekly.py` executes: fetch → extract → sync

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 from typing import Any, Callable
 
 from app.core.urls import canonicalize_url, extract_domain
@@ -9,6 +10,32 @@ from app.services.discovery.store_sources import store_discovered_sources
 from app.services.fetch.http_fetcher import fetch_url_text
 
 MIN_TEXT_LEN = 1500
+PREFERRED_URL_KEYWORDS = ["termine", "kalender", "veranstaltungen", "programm"]
+ARCHIVE_SIGNALS = ["rückblick", "archiv"]
+
+logger = logging.getLogger(__name__)
+
+
+def _is_preferred_url(url: str) -> bool:
+    lower = url.lower()
+    return any(keyword in lower for keyword in PREFERRED_URL_KEYWORDS)
+
+
+def _has_archive_or_past_signals(text: str, current_year: int) -> bool:
+    lower = text.lower()
+    if any(signal in lower for signal in ARCHIVE_SIGNALS):
+        return True
+
+    for token in lower.split():
+        if token.isdigit() and len(token) == 4:
+            try:
+                year = int(token)
+            except ValueError:
+                continue
+            if year < current_year:
+                return True
+
+    return False
 
 
 def discover_and_store_sources(
@@ -23,7 +50,10 @@ def discover_and_store_sources(
         "blocked_domain": 0,
         "fetch_failed": 0,
         "too_short": 0,
+        "archive_or_past": 0,
     }
+
+    current_year = (now or datetime.utcnow()).year
 
     for item in candidates:
         if not isinstance(item, dict):
@@ -47,6 +77,17 @@ def discover_and_store_sources(
         if len(text) < MIN_TEXT_LEN:
             rejected["too_short"] += 1
             continue
+
+        if _has_archive_or_past_signals(text, current_year):
+            rejected["archive_or_past"] += 1
+            logger.info("Rejected archive/past url=%s", canonical)
+            continue
+
+        preferred = _is_preferred_url(canonical)
+        if preferred:
+            logger.info("Accepted preferred url=%s", canonical)
+        else:
+            logger.info("Accepted non-preferred url=%s", canonical)
 
         accepted.append(
             {

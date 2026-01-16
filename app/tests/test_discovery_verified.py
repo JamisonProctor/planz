@@ -120,8 +120,10 @@ def test_discovery_accepts_good_url_and_persists() -> None:
             }
         ]
 
+    current_year = datetime.now(tz=timezone.utc).year
+
     def fetcher(url: str, timeout: float = 5.0):
-        return ("Event on 12.03.2025 " * 200), None
+        return (f"Event on 12.03.{current_year} " * 200), None
 
     stats = discover_and_store_sources(
         session,
@@ -135,3 +137,31 @@ def test_discovery_accepts_good_url_and_persists() -> None:
     assert domain is not None
     assert url is not None
     assert stats["accepted"] == 1
+
+
+def test_discovery_rejects_archive_or_past_signals() -> None:
+    session = _make_session()
+
+    def llm_client():
+        return [
+            {
+                "url": "https://example.com/programm",
+                "name": "Archive",
+                "type": "blog",
+                "reason": "kids",
+            }
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return ("Archiv 2023 events " * 200), None
+
+    stats = discover_and_store_sources(
+        session,
+        llm_client=llm_client,
+        http_fetcher=fetcher,
+        now=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    urls = session.scalars(select(SourceUrl)).all()
+    assert urls == []
+    assert stats["rejected"]["archive_or_past"] == 1

@@ -40,6 +40,7 @@ def main() -> None:
     print(f"Sources skipped (disabled domain): {stats['sources_skipped_disabled_domain']}")
     print(f"Sources empty extraction: {stats['sources_empty_extraction']}")
     print(f"Sources error extraction: {stats['sources_error_extraction']}")
+    print(f"Sources past-only: {stats['sources_past_only']}")
     print(f"Events created: {stats['events_created_total']}")
 
 

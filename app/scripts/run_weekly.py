@@ -127,6 +127,7 @@ def run_weekly_pipeline(
             ],
             "sources_empty_extraction": 0,
             "sources_error_extraction": 0,
+            "sources_past_only": 0,
         }
     else:
         extract_stats = extract_runner()
@@ -141,7 +142,7 @@ def run_weekly_pipeline(
     client = None
     if calendar_client_factory is not None:
         client = calendar_client_factory(calendar_id=settings.GOOGLE_CALENDAR_ID)
-    sync_result = sync_runner(session, client, now=now, limit=50, grace_hours=12)
+    sync_result = sync_runner(session, client, now=now, limit=50, grace_hours=0)
     if isinstance(sync_result, int):
         sync_stats = {
             "synced_count": sync_result,
@@ -170,6 +171,7 @@ def run_weekly_pipeline(
     print(
         f"Sources error extraction: {extract_stats['sources_error_extraction']}"
     )
+    print(f"Sources past-only: {extract_stats['sources_past_only']}")
     print(f"Events synced: {sync_stats['synced_count']}")
     print(
         f"Events skipped (already synced): {sync_stats['skipped_already_synced']}"

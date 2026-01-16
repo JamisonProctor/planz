@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -40,19 +40,20 @@ def test_store_extracted_events_skips_when_hash_unchanged() -> None:
     source_url.last_extracted_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
     session.commit()
 
+    now = datetime.now(tz=timezone.utc)
+    future_start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    future_end = (now + timedelta(days=2, hours=1)).astimezone(timezone.utc).isoformat()
     extracted = [
         {
             "title": "Event",
-            "start_time": "2024-01-02T10:00:00+01:00",
-            "end_time": "2024-01-02T11:00:00+01:00",
+            "start_time": future_start,
+            "end_time": future_end,
         }
     ]
 
-    created = store_extracted_events(
-        session, source_url, extracted, now=datetime.now(tz=timezone.utc)
-    )
+    result = store_extracted_events(session, source_url, extracted, now=now)
 
-    assert created == 0
+    assert result["created"] == 0
     assert session.scalars(select(Event)).all() == []
     assert source_url.last_extracted_hash == "hash1"
 
@@ -61,26 +62,29 @@ def test_store_extracted_events_creates_rows() -> None:
     session = _make_session()
     source_url = _create_source_url(session, content_hash="hash2")
     now = datetime.now(tz=timezone.utc)
-
+    start_a = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    end_a = (now + timedelta(days=2, hours=1)).astimezone(timezone.utc).isoformat()
+    start_b = (now + timedelta(days=3)).astimezone(timezone.utc).isoformat()
+    end_b = (now + timedelta(days=3, hours=1, minutes=30)).astimezone(timezone.utc).isoformat()
     extracted = [
         {
             "title": "Event A",
-            "start_time": "2024-01-02T10:00:00+01:00",
-            "end_time": "2024-01-02T11:00:00+01:00",
+            "start_time": start_a,
+            "end_time": end_a,
             "location": "Munich",
         },
         {
             "title": "Event B",
-            "start_time": "2024-01-03T10:00:00+01:00",
-            "end_time": "2024-01-03T11:30:00+01:00",
+            "start_time": start_b,
+            "end_time": end_b,
             "location": "Munich",
         },
     ]
 
-    created = store_extracted_events(session, source_url, extracted, now=now)
+    result = store_extracted_events(session, source_url, extracted, now=now)
 
     events = session.scalars(select(Event)).all()
-    assert created == 2
+    assert result["created"] == 2
     assert len(events) == 2
     assert source_url.last_extracted_hash == "hash2"
     assert source_url.last_extracted_at == now
@@ -90,22 +94,23 @@ def test_store_extracted_events_ignores_invalid_items() -> None:
     session = _make_session()
     source_url = _create_source_url(session, content_hash="hash3")
 
+    now = datetime.now(tz=timezone.utc)
+    future_start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    future_end = (now + timedelta(days=2, hours=1)).astimezone(timezone.utc).isoformat()
     extracted = [
         {"title": "Missing start"},
-        {"start_time": "2024-01-02T10:00:00+01:00"},
+        {"start_time": future_start},
         {
             "title": "Valid",
-            "start_time": "2024-01-02T10:00:00+01:00",
-            "end_time": "2024-01-02T11:00:00+01:00",
+            "start_time": future_start,
+            "end_time": future_end,
         },
     ]
 
-    created = store_extracted_events(
-        session, source_url, extracted, now=datetime.now(tz=timezone.utc)
-    )
+    result = store_extracted_events(session, source_url, extracted, now=now)
 
     events = session.scalars(select(Event)).all()
-    assert created == 1
+    assert result["created"] == 1
     assert len(events) == 1
 
 
@@ -113,8 +118,8 @@ def test_store_extracted_events_handles_empty_list() -> None:
     session = _make_session()
     source_url = _create_source_url(session, content_hash="hash4")
 
-    created = store_extracted_events(
+    result = store_extracted_events(
         session, source_url, [], now=datetime.now(tz=timezone.utc)
     )
 
-    assert created == 0
+    assert result["created"] == 0

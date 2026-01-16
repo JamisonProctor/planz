@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -72,15 +72,18 @@ def test_extraction_sets_error_status_on_exception() -> None:
 def test_extraction_sets_ok_and_count_on_success() -> None:
     session = _make_session()
     source_url = _create_source(session, content_hash="hash3", last_hash="old")
+    now = datetime.now(tz=timezone.utc)
+    start_a = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    start_b = (now + timedelta(days=3)).astimezone(timezone.utc).isoformat()
 
     def extractor(text: str, source_url: str):
         return [
-            {"title": "A", "start_time": "2024-01-02T10:00:00+01:00"},
-            {"title": "B", "start_time": "2024-01-03T10:00:00+01:00"},
+            {"title": "A", "start_time": start_a},
+            {"title": "B", "start_time": start_b},
         ]
 
     stats = extract_and_store_for_sources(
-        session, extractor=extractor, now=datetime.now(tz=timezone.utc)
+        session, extractor=extractor, now=now
     )
 
     refreshed = session.get(SourceUrl, source_url.id)

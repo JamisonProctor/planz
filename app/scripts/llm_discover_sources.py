@@ -35,7 +35,7 @@ def main() -> None:
     print(f"Accepted: {result['accepted']}")
     print(
         "Rejected: blocked_domain={blocked_domain}, fetch_failed={fetch_failed}, "
-        "too_short={too_short}".format(**rejected)
+        "too_short={too_short}, archive_or_past={archive_or_past}".format(**rejected)
     )
     print("Top accepted URLs:")
     for url in result["accepted_urls"][:10]:

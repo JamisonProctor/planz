@@ -46,7 +46,7 @@ def test_sync_unsynced_events_creates_calendar_sync_rows() -> None:
     session.commit()
 
     client = _FakeCalendarClient(["abc123", "def456"])
-    stats = sync_unsynced_events(session, client, now=now, grace_hours=12)
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0)
 
     rows = session.scalars(select(CalendarSync)).all()
     assert stats["synced_count"] == 2
@@ -87,7 +87,7 @@ def test_sync_unsynced_events_skips_already_synced() -> None:
     session.commit()
 
     client = _FakeCalendarClient(["newid"])
-    stats = sync_unsynced_events(session, client, now=now, grace_hours=12)
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0)
 
     assert stats["synced_count"] == 1
     assert client.calls == 1
@@ -106,7 +106,7 @@ def test_sync_unsynced_events_skips_past_events() -> None:
     session.commit()
 
     client = _FakeCalendarClient(["ignored"])
-    stats = sync_unsynced_events(session, client, now=now, grace_hours=12)
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0)
 
     assert stats["synced_count"] == 0
     assert client.calls == 0
@@ -130,7 +130,7 @@ def test_sync_unsynced_events_continues_on_failure() -> None:
     session.commit()
 
     client = _FakeCalendarClient([RuntimeError("boom"), "ok-id"])
-    stats = sync_unsynced_events(session, client, now=now, grace_hours=12)
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0)
 
     rows = session.scalars(select(CalendarSync)).all()
     assert stats["synced_count"] == 1
@@ -139,7 +139,7 @@ def test_sync_unsynced_events_continues_on_failure() -> None:
     assert client.calls == 2
 
 
-def test_sync_unsynced_events_respects_grace_window() -> None:
+def test_sync_unsynced_events_skips_recent_past_by_default() -> None:
     session = _make_session()
     now = datetime.now(tz=timezone.utc)
 
@@ -157,10 +157,9 @@ def test_sync_unsynced_events_respects_grace_window() -> None:
     session.commit()
 
     client = _FakeCalendarClient(["ok-id"])
-    stats = sync_unsynced_events(session, client, now=now, grace_hours=12)
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0)
 
     rows = session.scalars(select(CalendarSync)).all()
-    assert stats["synced_count"] == 1
-    assert stats["skipped_too_old"] == 1
-    assert len(rows) == 1
-    assert rows[0].event_id == recent_past.id
+    assert stats["synced_count"] == 0
+    assert stats["skipped_too_old"] == 2
+    assert len(rows) == 0
