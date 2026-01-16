@@ -6,6 +6,7 @@ from typing import Callable
 
 from sqlalchemy import select
 
+from app.core.env import is_force_extract_enabled
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.services.extract.store_extracted_events import store_extracted_events
@@ -28,6 +29,10 @@ def extract_and_store_for_sources(
         "sources_error_extraction": 0,
     }
 
+    force_extract = is_force_extract_enabled()
+    if force_extract:
+        logger.info("Force extraction enabled: ignoring content hash")
+
     rows = session.execute(
         select(SourceUrl, SourceDomain.is_allowed).join(
             SourceDomain, SourceDomain.id == SourceUrl.domain_id
@@ -43,12 +48,13 @@ def extract_and_store_for_sources(
             stats["sources_skipped_no_content"] += 1
             continue
 
-        if (
-            source_url.content_hash
-            and source_url.last_extracted_hash == source_url.content_hash
-        ):
-            stats["sources_skipped_unchanged_hash"] += 1
-            continue
+        if not force_extract:
+            if (
+                source_url.content_hash
+                and source_url.last_extracted_hash == source_url.content_hash
+            ):
+                stats["sources_skipped_unchanged_hash"] += 1
+                continue
 
         stats["sources_processed"] += 1
         try:
@@ -66,7 +72,13 @@ def extract_and_store_for_sources(
             stats["sources_error_extraction"] += 1
             continue
 
-        created = store_extracted_events(session, source_url, extracted, now=now)
+        created = store_extracted_events(
+            session,
+            source_url,
+            extracted,
+            now=now,
+            force_extract=force_extract,
+        )
         stats["events_created_total"] += created
 
         if created == 0:

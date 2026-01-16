@@ -12,3 +12,8 @@ def get_required_env(name: str) -> str:
     if not value:
         raise ValueError(f"Missing required environment variable: {name}")
     return value
+
+
+def is_force_extract_enabled() -> bool:
+    value = os.getenv("PLANZ_FORCE_EXTRACT", "")
+    return value.strip().lower() in {"true", "1", "yes"}

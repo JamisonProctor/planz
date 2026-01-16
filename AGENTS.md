@@ -163,6 +163,15 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 
 ---
 
+## Dev-Only Extraction Override
+
+`PLANZ_FORCE_EXTRACT` is a development-only escape hatch:
+- When set to `true`/`1`/`yes`, extraction ignores unchanged content hashes.
+- Must never be enabled in production.
+- Intended for debugging and early development only.
+
+---
+
 ## Agent Responsibilities (CRITICAL)
 
 Any coding agent operating in this repo MUST:

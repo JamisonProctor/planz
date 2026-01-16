@@ -17,8 +17,13 @@ def store_extracted_events(
     source_url: SourceUrl,
     extracted_events: list[dict[str, Any]],
     now: datetime,
+    force_extract: bool = False,
 ) -> int:
-    if source_url.content_hash and source_url.last_extracted_hash == source_url.content_hash:
+    if (
+        not force_extract
+        and source_url.content_hash
+        and source_url.last_extracted_hash == source_url.content_hash
+    ):
         return 0
 
     created = 0
