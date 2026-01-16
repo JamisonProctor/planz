@@ -33,6 +33,7 @@ The system is a **multi-stage pipeline**:
    - Verification gate: blocked domains, fetchable, min length, date tokens, no archive signals
    - Prefer URLs with terms like `termine`/`kalender`/`veranstaltungen`/`programm`
    - Domain blocklist for v1: Meetup/Eventbrite are blocked
+   - AcquisitionIssue registry tracks uncapturable URLs and reasons
 
 2. **Fetch**  
    - Fetch raw page content for allowed SourceUrls
@@ -156,6 +157,13 @@ Weekly runs must print a clear summary, even on no-op runs. At minimum:
 - Sync counts with skip reasons (already synced, past)
 
 If a run does no work, the reason must be explicit (e.g., no sources, missing key, unchanged hashes).
+
+---
+
+## Acquisition Issue Registry
+
+Rejected or uncapturable URLs are tracked in `AcquisitionIssue` with a reason and timestamps.
+This is used to understand failure modes (blocked, JS-only, archive, etc.) without losing provenance.
 
 ---
 

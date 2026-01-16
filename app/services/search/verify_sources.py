@@ -19,6 +19,7 @@ DATE_PATTERNS = [
     re.compile(r"\b(Januar|Februar|Maerz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\b", re.IGNORECASE),
 ]
 ARCHIVE_SIGNALS = ["archiv", "rueckblick", "ruckblick"]
+JS_SIGNALS = ["enable javascript", "javascript required"]
 
 
 def _has_date_token(text: str) -> bool:
@@ -42,33 +43,50 @@ def _has_past_year(text: str, current_year: int) -> bool:
     return False
 
 
+def _is_js_suspected(text: str) -> bool:
+    lower = text.lower()
+    if any(token in lower for token in JS_SIGNALS):
+        return True
+
+    tag_stripped = re.sub(r"<[^>]+>", " ", text)
+    visible_len = len(tag_stripped.strip())
+    total_len = len(text.strip())
+    if total_len == 0:
+        return False
+
+    ratio = visible_len / total_len
+    script_count = len(re.findall(r"<script", lower))
+    return ratio < 0.2 or script_count > 10
+
+
 def verify_candidate_url(
     url: str,
     fetcher: Callable[[str, float], tuple[str | None, str | None]] = fetch_url_text,
     min_text_len: int = MIN_TEXT_LEN,
-) -> tuple[bool, str, str | None]:
+) -> tuple[bool, str, str | None, int | None]:
     canonical = canonicalize_url(url)
     if not canonical:
-        return False, "fetch_failed", None
+        return False, "fetch_failed", None, None
 
     domain = extract_domain(canonical)
     if not is_domain_allowed(domain):
-        return False, "blocked_domain", canonical
+        return False, "blocked_domain", canonical, None
 
     text, error = fetcher(canonical, 5.0)
     if error or text is None:
-        return False, "fetch_failed", canonical
+        return False, "fetch_failed", canonical, None
 
-    if len(text) < min_text_len:
-        return False, "too_short", canonical
+    content_length = len(text)
+    if content_length < min_text_len:
+        return False, "too_short", canonical, content_length
 
-    if _has_archive_signal(text):
-        return False, "archive_signals", canonical
+    if _has_archive_signal(text) or _has_past_year(text, datetime.utcnow().year):
+        return False, "archive_signals", canonical, content_length
+
+    if _is_js_suspected(text):
+        return False, "js_suspected", canonical, content_length
 
     if not _has_date_token(text):
-        return False, "no_date_tokens", canonical
+        return False, "no_date_tokens", canonical, content_length
 
-    if _has_past_year(text, datetime.utcnow().year):
-        return False, "archive_signals", canonical
-
-    return True, "accepted", canonical
+    return True, "accepted", canonical, content_length

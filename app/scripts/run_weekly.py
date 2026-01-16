@@ -121,6 +121,7 @@ def run_weekly_pipeline(
             "too_short": 0,
             "no_date_tokens": 0,
             "archive_signals": 0,
+            "js_suspected": 0,
         },
     }
 
@@ -245,6 +246,7 @@ def _normalize_search_stats(search_stats: dict) -> dict:
             "too_short": 0,
             "no_date_tokens": 0,
             "archive_signals": 0,
+            "js_suspected": 0,
         },
     }
     merged = {**defaults, **search_stats}

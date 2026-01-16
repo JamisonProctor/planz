@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
@@ -20,9 +21,12 @@ TIMEZONE = "Europe/Berlin"
 class GoogleCalendarClient(CalendarClient):
     def __init__(self, calendar_id: str | None = None) -> None:
         self.calendar_id = calendar_id or settings.GOOGLE_CALENDAR_ID
-        self.service = self._get_calendar_service()
+        self._disabled = bool(os.getenv("PYTEST_CURRENT_TEST"))
+        self.service = None if self._disabled else self._get_calendar_service()
 
     def upsert_event(self, calendar_event: CalendarEvent) -> str:
+        if self._disabled:
+            raise NotImplementedError("Google Calendar calls are disabled in tests.")
         event_body = self._build_event_body(calendar_event)
         event_id = getattr(calendar_event, "google_event_id", None)
 
@@ -47,6 +51,8 @@ class GoogleCalendarClient(CalendarClient):
 
     def delete_event(self, calendar_event_id: str) -> None:
         """Delete event by ID; raises HttpError on failure (including missing IDs)."""
+        if self._disabled:
+            raise NotImplementedError("Google Calendar calls are disabled in tests.")
         try:
             self.service.events().delete(
                 calendarId=self.calendar_id,

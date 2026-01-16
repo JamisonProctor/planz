@@ -12,6 +12,7 @@ from app.db.models.search_run import SearchRun
 from app.db.models.source_domain import get_or_create_domain
 from app.db.models.source_url import SourceUrl
 from app.db.models.source_url_discovery import SourceUrlDiscovery
+from app.services.search.acquisition_issues import upsert_acquisition_issue
 from app.services.search.query_bundle import build_query_bundle
 from app.services.search.types import SearchResultItem
 from app.services.search.verify_sources import verify_candidate_url
@@ -81,17 +82,27 @@ def search_and_seed_sources(
         "too_short": 0,
         "no_date_tokens": 0,
         "archive_signals": 0,
+        "js_suspected": 0,
     }
     accepted_urls: list[str] = []
 
     for url, search_result in sorted(
         candidates.items(), key=lambda item: _is_preferred_url(item[0]), reverse=True
     ):
-        ok, reason, canonical = verify_candidate_url(url, fetcher=fetcher)
+        ok, reason, canonical, content_length = verify_candidate_url(url, fetcher=fetcher)
         if not ok:
             rejected[reason] += 1
             if reason == "archive_signals":
                 logger.info("Rejected archive/past url=%s", url)
+            upsert_acquisition_issue(
+                session,
+                url=canonical or url,
+                domain=search_result.domain,
+                reason=reason,
+                now=now,
+                content_length=content_length,
+                discovered_search_result_id=search_result.id,
+            )
             continue
 
         domain_row = get_or_create_domain(session, search_result.domain)

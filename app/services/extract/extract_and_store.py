@@ -10,6 +10,7 @@ from app.core.env import is_force_extract_enabled
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.services.extract.store_extracted_events import store_extracted_events
+from app.services.search.acquisition_issues import upsert_acquisition_issue
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,12 @@ def extract_and_store_for_sources(
         logger.info("Force extraction enabled: ignoring content hash")
 
     rows = session.execute(
-        select(SourceUrl, SourceDomain.is_allowed).join(
+        select(SourceUrl, SourceDomain.is_allowed, SourceDomain.domain).join(
             SourceDomain, SourceDomain.id == SourceUrl.domain_id
         )
     ).all()
 
-    for source_url, is_allowed in rows:
+    for source_url, is_allowed, domain_name in rows:
         if not is_allowed:
             stats["sources_skipped_disabled_domain"] += 1
             continue
@@ -91,6 +92,13 @@ def extract_and_store_for_sources(
             source_url.last_extraction_status = "empty"
             source_url.last_extraction_count = 0
             stats["sources_empty_extraction"] += 1
+            upsert_acquisition_issue(
+                session,
+                url=source_url.url,
+                domain=domain_name,
+                reason="extraction_empty",
+                now=now,
+            )
         else:
             source_url.last_extraction_status = "ok"
             source_url.last_extraction_count = created

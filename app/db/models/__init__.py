@@ -1,3 +1,4 @@
+from app.db.models.acquisition_issue import AcquisitionIssue
 from app.db.models.calendar_sync import CalendarSync
 from app.db.models.event import Event
 from app.db.models.search_query import SearchQuery
@@ -16,4 +17,5 @@ __all__ = [
     "SearchQuery",
     "SearchResult",
     "SourceUrlDiscovery",
+    "AcquisitionIssue",
 ]
