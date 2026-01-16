@@ -138,11 +138,18 @@ def run_weekly_pipeline(
     ):
         print("Extraction skipped: all content hashes unchanged.")
 
-    sync_inventory = _sync_inventory(session, now)
     client = None
     if calendar_client_factory is not None:
         client = calendar_client_factory(calendar_id=settings.GOOGLE_CALENDAR_ID)
-    synced = sync_runner(session, client, now=now, limit=50)
+    sync_result = sync_runner(session, client, now=now, limit=50, grace_hours=12)
+    if isinstance(sync_result, int):
+        sync_stats = {
+            "synced_count": sync_result,
+            "skipped_already_synced": 0,
+            "skipped_too_old": 0,
+        }
+    else:
+        sync_stats = sync_result
 
     print(f"Fetched OK: {fetch_stats['fetched_ok']}")
     print(f"Fetched errors: {fetch_stats['fetched_error']}")
@@ -163,18 +170,18 @@ def run_weekly_pipeline(
     print(
         f"Sources error extraction: {extract_stats['sources_error_extraction']}"
     )
-    print(f"Events synced: {synced}")
+    print(f"Events synced: {sync_stats['synced_count']}")
     print(
-        f"Events skipped (already synced): {sync_inventory['events_skipped_already_synced']}"
+        f"Events skipped (already synced): {sync_stats['skipped_already_synced']}"
     )
-    print(f"Events skipped (past): {sync_inventory['events_skipped_past']}")
+    print(f"Events skipped (too old): {sync_stats['skipped_too_old']}")
 
     return {
         **inventory,
         **fetch_stats,
         **extract_stats,
-        **sync_inventory,
-        "events_synced": synced,
+        **sync_stats,
+        "events_synced": sync_stats["synced_count"],
     }
 
 

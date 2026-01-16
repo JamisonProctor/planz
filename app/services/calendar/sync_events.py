@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models.calendar_sync import CalendarSync
@@ -17,12 +17,26 @@ def sync_unsynced_events(
     calendar_client,
     now: datetime,
     limit: int = 50,
-) -> int:
+    grace_hours: int = 12,
+) -> dict[str, int]:
+    grace_cutoff = now - timedelta(hours=grace_hours)
+    skipped_already_synced = session.scalar(
+        select(func.count(Event.id))
+        .join(CalendarSync, CalendarSync.event_id == Event.id)
+        .where(Event.start_time >= grace_cutoff)
+    ) or 0
+    skipped_too_old = session.scalar(
+        select(func.count(Event.id))
+        .outerjoin(CalendarSync, CalendarSync.event_id == Event.id)
+        .where(CalendarSync.id.is_(None))
+        .where(Event.start_time < grace_cutoff)
+    ) or 0
+
     stmt = (
         select(Event)
         .outerjoin(CalendarSync, CalendarSync.event_id == Event.id)
         .where(CalendarSync.id.is_(None))
-        .where(Event.start_time >= now)
+        .where(Event.start_time >= grace_cutoff)
         .order_by(Event.start_time)
         .limit(limit)
     )
@@ -48,4 +62,8 @@ def sync_unsynced_events(
         synced += 1
 
     session.commit()
-    return synced
+    return {
+        "synced_count": synced,
+        "skipped_already_synced": skipped_already_synced,
+        "skipped_too_old": skipped_too_old,
+    }

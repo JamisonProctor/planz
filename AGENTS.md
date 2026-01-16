@@ -47,6 +47,7 @@ The system is a **multi-stage pipeline**:
    - Sync only *future, unsynced* events to Google Calendar
    - Persist `CalendarSync` records for idempotency
    - Never spam calendars
+   - Prototype grace window: recent past events (within configured hours) may sync
 
 5. **Orchestration**
    - `run_weekly.py` executes: fetch → extract → sync
