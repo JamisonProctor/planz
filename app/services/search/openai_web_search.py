@@ -89,11 +89,28 @@ def _is_web_search_call(item: Any) -> bool:
     return getattr(item, "type", None) == "web_search_call"
 
 
+def _extract_sources(action: Any) -> list[dict[str, Any]]:
+    if isinstance(action, dict):
+        sources = action.get("sources", [])
+    elif hasattr(action, "sources"):
+        sources = getattr(action, "sources") or []
+    elif hasattr(action, "model_dump"):
+        sources = (action.model_dump() or {}).get("sources", [])
+    else:
+        sources = []
+
+    if not isinstance(sources, list):
+        return []
+    return [
+        source for source in sources if isinstance(source, dict) and source.get("url")
+    ]
+
+
 def _get_sources(item: Any) -> list[dict[str, Any]]:
     if isinstance(item, dict):
-        return (item.get("action") or {}).get("sources", [])
-    action = getattr(item, "action", None) or {}
-    return action.get("sources", [])
+        return _extract_sources(item.get("action") or {})
+    action = getattr(item, "action", None)
+    return _extract_sources(action)
 
 
 def _count_web_search_calls(response: Any) -> int:

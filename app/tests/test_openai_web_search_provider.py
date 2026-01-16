@@ -1,4 +1,7 @@
-from app.services.search.openai_web_search import OpenAIWebSearchProvider
+from app.services.search.openai_web_search import (
+    OpenAIWebSearchProvider,
+    _extract_sources,
+)
 
 
 class _FakeResponse:
@@ -37,3 +40,31 @@ def test_openai_web_search_provider_returns_normalized_results() -> None:
     assert "https://example.com/a" in urls
     assert "https://example.com/b" in urls
     assert results[0].rank == 1
+
+
+class _DummyAction:
+    def __init__(self, sources):
+        self.sources = sources
+
+
+class _DummyActionModelDump:
+    def __init__(self, sources):
+        self._sources = sources
+
+    def model_dump(self):
+        return {"sources": self._sources}
+
+
+def test_extract_sources_from_dict_action() -> None:
+    action = {"sources": [{"url": "https://example.com/a"}]}
+    assert _extract_sources(action) == [{"url": "https://example.com/a"}]
+
+
+def test_extract_sources_from_object_action() -> None:
+    action = _DummyAction([{"url": "https://example.com/b"}])
+    assert _extract_sources(action) == [{"url": "https://example.com/b"}]
+
+
+def test_extract_sources_from_model_dump_action() -> None:
+    action = _DummyActionModelDump([{"url": "https://example.com/c"}])
+    assert _extract_sources(action) == [{"url": "https://example.com/c"}]
