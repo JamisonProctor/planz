@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Callable
 
 from app.core.urls import canonicalize_url, extract_domain
@@ -43,6 +44,37 @@ def _has_past_year(text: str, current_year: int) -> bool:
     return False
 
 
+def page_has_future_date(text: str, now: datetime, window_days: int) -> bool:
+    dates = _extract_date_candidates(text)
+    if not dates:
+        return False
+
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    berlin_today = now.astimezone(ZoneInfo("Europe/Berlin")).date()
+    window_end = berlin_today + timedelta(days=window_days)
+
+    for candidate in dates:
+        if berlin_today <= candidate <= window_end:
+            return True
+    return False
+
+
+def _extract_date_candidates(text: str) -> list[datetime.date]:
+    candidates: list[datetime.date] = []
+    for match in re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text):
+        try:
+            candidates.append(datetime.strptime(match, "%Y-%m-%d").date())
+        except ValueError:
+            continue
+    for match in re.findall(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", text):
+        try:
+            candidates.append(datetime.strptime(match, "%d.%m.%Y").date())
+        except ValueError:
+            continue
+    return candidates
+
+
 def _is_js_suspected(text: str) -> bool:
     lower = text.lower()
     if any(token in lower for token in JS_SIGNALS):
@@ -63,6 +95,8 @@ def verify_candidate_url(
     url: str,
     fetcher: Callable[[str, float], tuple[str | None, str | None]] = fetch_url_text,
     min_text_len: int = MIN_TEXT_LEN,
+    now: datetime | None = None,
+    window_days: int | None = None,
 ) -> tuple[bool, str, str | None, int | None]:
     canonical = canonicalize_url(url)
     if not canonical:
@@ -86,7 +120,12 @@ def verify_candidate_url(
     if _is_js_suspected(text):
         return False, "js_suspected", canonical, content_length
 
-    if not _has_date_token(text):
+    date_candidates = _extract_date_candidates(text)
+    if not date_candidates:
         return False, "no_date_tokens", canonical, content_length
+
+    if date_candidates and now is not None and window_days is not None:
+        if not page_has_future_date(text, now=now, window_days=window_days):
+            return False, "past_only", canonical, content_length
 
     return True, "accepted", canonical, content_length

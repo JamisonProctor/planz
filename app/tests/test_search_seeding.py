@@ -81,3 +81,177 @@ def test_search_seeding_verifies_and_persists() -> None:
     assert stats["accepted"] == 1
     assert stats["rejected"]["no_date_tokens"] == 1
     assert stats["rejected"]["archive_signals"] == 1
+
+
+def test_search_seeding_rejects_past_only_dates() -> None:
+    session = _make_session()
+
+    def provider_search(query: str, language: str, location: str, max_results: int):
+        return [
+            SearchResultItem(
+                url="https://example.com/past",
+                title="Past",
+                snippet="snippet",
+                rank=1,
+                domain="example.com",
+            )
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return "Event on 2025-01-10 " * 100, None
+
+    stats = search_and_seed_sources(
+        session,
+        provider_search=provider_search,
+        fetcher=fetcher,
+        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
+        location="Munich, Germany",
+        window_days=30,
+        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
+    )
+
+    urls = session.scalars(select(SourceUrl)).all()
+    assert urls == []
+    assert stats["rejected"]["past_only"] == 1
+
+
+def test_search_seeding_accepts_future_window_dates() -> None:
+    session = _make_session()
+
+    def provider_search(query: str, language: str, location: str, max_results: int):
+        return [
+            SearchResultItem(
+                url="https://example.com/future",
+                title="Future",
+                snippet="snippet",
+                rank=1,
+                domain="example.com",
+            )
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return "Event on 2026-01-26 " * 100, None
+
+    stats = search_and_seed_sources(
+        session,
+        provider_search=provider_search,
+        fetcher=fetcher,
+        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
+        location="Munich, Germany",
+        window_days=30,
+        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
+    )
+
+    urls = session.scalars(select(SourceUrl)).all()
+    assert len(urls) == 1
+    assert stats["accepted"] == 1
+
+
+def test_search_seeding_blocks_aggregators_when_disabled(monkeypatch) -> None:
+    session = _make_session()
+    monkeypatch.setenv("PLANZ_ALLOW_AGGREGATORS", "false")
+
+    def provider_search(query: str, language: str, location: str, max_results: int):
+        return [
+            SearchResultItem(
+                url="https://eventfrog.de/events",
+                title="Agg",
+                snippet="snippet",
+                rank=1,
+                domain="eventfrog.de",
+            )
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return "Event on 2026-01-26 " * 100, None
+
+    stats = search_and_seed_sources(
+        session,
+        provider_search=provider_search,
+        fetcher=fetcher,
+        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
+        location="Munich, Germany",
+        window_days=30,
+        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
+    )
+
+    urls = session.scalars(select(SourceUrl)).all()
+    assert urls == []
+    assert stats["rejected"]["aggregator_blocked"] == 1
+
+
+def test_search_seeding_caps_aggregators_when_enabled(monkeypatch) -> None:
+    session = _make_session()
+    monkeypatch.setenv("PLANZ_ALLOW_AGGREGATORS", "true")
+
+    def provider_search(query: str, language: str, location: str, max_results: int):
+        return [
+            SearchResultItem(
+                url="https://eventfrog.de/events/1",
+                title="Agg1",
+                snippet="snippet",
+                rank=1,
+                domain="eventfrog.de",
+            ),
+            SearchResultItem(
+                url="https://eventfrog.de/events/2",
+                title="Agg2",
+                snippet="snippet",
+                rank=2,
+                domain="eventfrog.de",
+            ),
+            SearchResultItem(
+                url="https://eventfrog.de/events/3",
+                title="Agg3",
+                snippet="snippet",
+                rank=3,
+                domain="eventfrog.de",
+            ),
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return "Event on 2026-01-26 " * 100, None
+
+    stats = search_and_seed_sources(
+        session,
+        provider_search=provider_search,
+        fetcher=fetcher,
+        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
+        location="Munich, Germany",
+        window_days=30,
+        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
+    )
+
+    assert stats["accepted"] == 2
+    assert stats["rejected"]["aggregator_capped"] == 1
+
+
+def test_search_seeding_allows_preferred_domains(monkeypatch) -> None:
+    session = _make_session()
+    monkeypatch.setenv("PLANZ_ALLOW_AGGREGATORS", "false")
+
+    def provider_search(query: str, language: str, location: str, max_results: int):
+        return [
+            SearchResultItem(
+                url="https://muenchen.de/veranstaltungen",
+                title="Preferred",
+                snippet="snippet",
+                rank=1,
+                domain="muenchen.de",
+            )
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return "Event on 2026-01-26 " * 100, None
+
+    stats = search_and_seed_sources(
+        session,
+        provider_search=provider_search,
+        fetcher=fetcher,
+        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
+        location="Munich, Germany",
+        window_days=30,
+        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
+    )
+
+    assert stats["accepted"] == 1

@@ -34,8 +34,11 @@ The system is a **multi-stage pipeline**:
    - SearchRun/SearchQuery/SearchResult stored for provenance
    - SourceUrl provenance recorded via SearchResult linkage
    - Verification gate: blocked domains, fetchable, min length, date tokens, no archive signals
+   - Future-window gating: only pages with dates in the configured window are accepted
    - Prefer URLs with terms like `termine`/`kalender`/`veranstaltungen`/`programm`
    - Domain blocklist for v1: Meetup/Eventbrite are blocked
+   - Aggregator suppression: blocked by default, optional allow with cap via `PLANZ_ALLOW_AGGREGATORS`
+   - Rejection reasons include `past_only`, `aggregator_blocked`, and `aggregator_capped`
    - AcquisitionIssue registry tracks uncapturable URLs and reasons
 
 2. **Fetch**  
