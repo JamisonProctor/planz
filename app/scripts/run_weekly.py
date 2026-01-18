@@ -117,12 +117,16 @@ def run_weekly_pipeline(
         "accepted": 0,
         "rejected": {
             "blocked_domain": 0,
+            "http_blocked": 0,
             "fetch_failed": 0,
             "too_short": 0,
-            "no_date_tokens": 0,
+        },
+        "accepted_soft_signals": {
             "archive_signals": 0,
+            "no_date_tokens": 0,
             "js_suspected": 0,
         },
+        "caps_hit": {"accepted": False, "fetched": False},
     }
 
     if search_enabled:
@@ -242,16 +246,27 @@ def _normalize_search_stats(search_stats: dict) -> dict:
         "accepted": 0,
         "rejected": {
             "blocked_domain": 0,
+            "http_blocked": 0,
             "fetch_failed": 0,
             "too_short": 0,
-            "no_date_tokens": 0,
+        },
+        "accepted_soft_signals": {
             "archive_signals": 0,
+            "no_date_tokens": 0,
             "js_suspected": 0,
         },
+        "caps_hit": {"accepted": False, "fetched": False},
     }
     merged = {**defaults, **search_stats}
     if "rejected" in search_stats:
         merged["rejected"] = {**defaults["rejected"], **search_stats["rejected"]}
+    if "accepted_soft_signals" in search_stats:
+        merged["accepted_soft_signals"] = {
+            **defaults["accepted_soft_signals"],
+            **search_stats["accepted_soft_signals"],
+        }
+    if "caps_hit" in search_stats:
+        merged["caps_hit"] = {**defaults["caps_hit"], **search_stats["caps_hit"]}
     return merged
 
 

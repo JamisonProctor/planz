@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import datetime
 from typing import Callable
 
 from app.core.urls import canonicalize_url, extract_domain
@@ -44,22 +43,6 @@ def _has_past_year(text: str, current_year: int) -> bool:
     return False
 
 
-def page_has_future_date(text: str, now: datetime, window_days: int) -> bool:
-    dates = _extract_date_candidates(text)
-    if not dates:
-        return False
-
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
-    berlin_today = now.astimezone(ZoneInfo("Europe/Berlin")).date()
-    window_end = berlin_today + timedelta(days=window_days)
-
-    for candidate in dates:
-        if berlin_today <= candidate <= window_end:
-            return True
-    return False
-
-
 def _extract_date_candidates(text: str) -> list[datetime.date]:
     candidates: list[datetime.date] = []
     for match in re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text):
@@ -93,11 +76,9 @@ def _is_js_suspected(text: str) -> bool:
 
 def verify_candidate_url(
     url: str,
-    fetcher: Callable[[str, float], tuple[str | None, str | None]] = fetch_url_text,
+    fetcher: Callable[..., tuple[str | None, str | None] | tuple[str | None, str | None, int | None]] = fetch_url_text,
     min_text_len: int = MIN_TEXT_LEN,
-    now: datetime | None = None,
-    window_days: int | None = None,
-) -> tuple[bool, str, str | None, int | None]:
+) -> tuple[bool, str, str | None, int | None, str | None, int | None]:
     canonical = canonicalize_url(url)
     if not canonical:
         return False, "fetch_failed", None, None
@@ -106,26 +87,32 @@ def verify_candidate_url(
     if not is_domain_allowed(domain):
         return False, "blocked_domain", canonical, None
 
-    text, error = fetcher(canonical, 5.0)
+    result = fetcher(canonical, 5.0)
+    if len(result) == 3:
+        text, error, status = result  # type: ignore[misc]
+    else:
+        text, error = result  # type: ignore[misc]
+        status = None
     if error or text is None:
-        return False, "fetch_failed", canonical, None
+        if status in {403, 404, 410}:
+            return False, "http_blocked", canonical, None, None, status
+        return False, "fetch_failed", canonical, None, None, status
 
     content_length = len(text)
     if content_length < min_text_len:
-        return False, "too_short", canonical, content_length
+        return False, "too_short", canonical, content_length, None, status
 
+    soft_signal = None
     if _has_archive_signal(text) or _has_past_year(text, datetime.utcnow().year):
-        return False, "archive_signals", canonical, content_length
+        soft_signal = "archive_signals"
 
     if _is_js_suspected(text):
-        return False, "js_suspected", canonical, content_length
+        if soft_signal is None:
+            soft_signal = "js_suspected"
 
     date_candidates = _extract_date_candidates(text)
     if not date_candidates:
-        return False, "no_date_tokens", canonical, content_length
+        if soft_signal is None:
+            soft_signal = "no_date_tokens"
 
-    if date_candidates and now is not None and window_days is not None:
-        if not page_has_future_date(text, now=now, window_days=window_days):
-            return False, "past_only", canonical, content_length
-
-    return True, "accepted", canonical, content_length
+    return True, "accepted", canonical, content_length, soft_signal, status

@@ -19,13 +19,6 @@ from app.services.search.types import SearchResultItem
 from app.services.search.verify_sources import verify_candidate_url
 
 PREFERRED_URL_KEYWORDS = ["termine", "kalender", "veranstaltungen", "programm"]
-AGGREGATOR_DOMAINS = {
-    "termine.de",
-    "eventfrog.de",
-    "allevents.in",
-    "feverup.com",
-    "rausgegangen.de",
-}
 PREFERRED_DOMAINS = {
     "musenkuss-muenchen.de",
     "muenchen.de",
@@ -35,16 +28,11 @@ PREFERRED_DOMAINS = {
     "bmw-welt.com",
     "deutsches-museum.de",
 }
-AGGREGATOR_CAP = 2
 
 
 def _is_preferred_url(url: str) -> bool:
     lower = url.lower()
     return any(keyword in lower for keyword in PREFERRED_URL_KEYWORDS)
-
-def _is_aggregator_domain(domain: str) -> bool:
-    return domain.lower() in AGGREGATOR_DOMAINS
-
 
 def _is_preferred_domain(domain: str) -> bool:
     return domain.lower() in PREFERRED_DOMAINS
@@ -103,71 +91,59 @@ def search_and_seed_sources(
 
     rejected = {
         "blocked_domain": 0,
+        "http_blocked": 0,
         "fetch_failed": 0,
         "too_short": 0,
-        "no_date_tokens": 0,
+    }
+    accepted_soft_signals = {
         "archive_signals": 0,
+        "no_date_tokens": 0,
         "js_suspected": 0,
-        "past_only": 0,
-        "aggregator_blocked": 0,
-        "aggregator_capped": 0,
     }
     accepted_urls: list[str] = []
-    aggregator_accepted = 0
-    allow_aggregators = os.getenv("PLANZ_ALLOW_AGGREGATORS", "false").strip().lower() in {
-        "true",
-        "1",
-        "yes",
-    }
+    max_accepted = int(os.getenv("PLANZ_MAX_ACCEPTED_PER_RUN", "25"))
+    max_fetched = int(os.getenv("PLANZ_MAX_FETCHED_PER_RUN", "50"))
+    caps_hit = {"accepted": False, "fetched": False}
+    fetched_count = 0
 
     for url, search_result in sorted(
         candidates.items(), key=lambda item: _is_preferred_url(item[0]), reverse=True
     ):
-        domain = search_result.domain
-        if _is_aggregator_domain(domain) and not _is_preferred_domain(domain):
-            if not allow_aggregators:
-                rejected["aggregator_blocked"] += 1
-                upsert_acquisition_issue(
-                    session,
-                    url=url,
-                    domain=domain,
-                    reason="aggregator_blocked",
-                    now=now,
-                    discovered_search_result_id=search_result.id,
-                )
-                continue
-            if aggregator_accepted >= AGGREGATOR_CAP:
-                rejected["aggregator_capped"] += 1
-                upsert_acquisition_issue(
-                    session,
-                    url=url,
-                    domain=domain,
-                    reason="aggregator_capped",
-                    now=now,
-                    discovered_search_result_id=search_result.id,
-                )
-                continue
+        if fetched_count >= max_fetched:
+            caps_hit["fetched"] = True
+            logger.info("Fetch cap hit (max=%s).", max_fetched)
+            break
 
-        ok, reason, canonical, content_length = verify_candidate_url(
-            url,
-            fetcher=fetcher,
-            now=now,
-            window_days=window_days,
+        ok, reason, canonical, content_length, soft_signal, status = verify_candidate_url(
+            url, fetcher=fetcher
         )
+        fetched_count += 1
         if not ok:
             rejected[reason] += 1
-            if reason == "archive_signals":
-                logger.info("Rejected archive/past url=%s", url)
             upsert_acquisition_issue(
                 session,
                 url=canonical or url,
                 domain=search_result.domain,
                 reason=reason,
                 now=now,
+                http_status=status,
                 content_length=content_length,
                 discovered_search_result_id=search_result.id,
             )
             continue
+
+        if soft_signal:
+            accepted_soft_signals[soft_signal] += 1
+            upsert_acquisition_issue(
+                session,
+                url=canonical or url,
+                domain=search_result.domain,
+                reason=soft_signal,
+                now=now,
+                http_status=status,
+                content_length=content_length,
+                discovered_search_result_id=search_result.id,
+            )
 
         domain_row = get_or_create_domain(session, search_result.domain)
         source_url = session.scalar(
@@ -185,12 +161,15 @@ def search_and_seed_sources(
             )
         )
         accepted_urls.append(canonical)
-        if _is_aggregator_domain(domain) and not _is_preferred_domain(domain):
-            aggregator_accepted += 1
         if _is_preferred_url(canonical):
             logger.info("Accepted preferred url=%s", canonical)
         else:
             logger.info("Accepted non-preferred url=%s", canonical)
+
+        if len(accepted_urls) >= max_accepted:
+            caps_hit["accepted"] = True
+            logger.info("Accepted cap hit (max=%s).", max_accepted)
+            break
 
     session.commit()
 
@@ -200,5 +179,7 @@ def search_and_seed_sources(
         "unique_candidates": len(candidates),
         "accepted": len(accepted_urls),
         "rejected": rejected,
+        "accepted_soft_signals": accepted_soft_signals,
         "accepted_urls": accepted_urls,
+        "caps_hit": caps_hit,
     }

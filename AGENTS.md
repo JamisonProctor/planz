@@ -33,12 +33,12 @@ The system is a **multi-stage pipeline**:
    - DE+EN multi-query bundle (`kostenlos`/`free`, `München`/`Munich`)
    - SearchRun/SearchQuery/SearchResult stored for provenance
    - SourceUrl provenance recorded via SearchResult linkage
-   - Verification gate: blocked domains, fetchable, min length, date tokens, no archive signals
-   - Future-window gating: only pages with dates in the configured window are accepted
+   - Seeding is recall-first; extraction filters past events later
+   - Hard rejects only: blocked domains, fetch failed, HTTP 403/404/410, too-short content
+   - Soft signals (archive/no-date/js) are recorded in `AcquisitionIssue` but still accepted
    - Prefer URLs with terms like `termine`/`kalender`/`veranstaltungen`/`programm`
    - Domain blocklist for v1: Meetup/Eventbrite are blocked
-   - Aggregator suppression: blocked by default, optional allow with cap via `PLANZ_ALLOW_AGGREGATORS`
-   - Rejection reasons include `past_only`, `aggregator_blocked`, and `aggregator_capped`
+   - Caps: `PLANZ_MAX_FETCHED_PER_RUN`, `PLANZ_MAX_ACCEPTED_PER_RUN`
    - AcquisitionIssue registry tracks uncapturable URLs and reasons
 
 2. **Fetch**  
@@ -170,6 +170,7 @@ If a run does no work, the reason must be explicit (e.g., no sources, missing ke
 
 Rejected or uncapturable URLs are tracked in `AcquisitionIssue` with a reason and timestamps.
 This is used to understand failure modes (blocked, JS-only, archive, etc.) without losing provenance.
+Review backlog via SQLite queries or admin endpoints when added.
 
 ---
 
@@ -189,6 +190,23 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 - When set to `true`/`1`/`yes`, extraction ignores unchanged content hashes.
 - Must never be enabled in production.
 - Intended for debugging and early development only.
+
+---
+
+## Manual Smoke Test
+
+1) `python -m app.scripts.search_and_seed_sources`  
+2) `python -m app.scripts.run_weekly`  
+3) Check calendar for `[PLZ]` events
+
+---
+
+## Last Run Outcome Checklist
+
+- Search seeded new URLs (accepted > 0)
+- Fetch produced ok content (fetched_ok > 0)
+- Extraction created events (events_created_total > 0)
+- Sync created calendar events (events_synced > 0)
 
 ---
 

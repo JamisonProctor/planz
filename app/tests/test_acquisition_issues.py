@@ -30,7 +30,7 @@ def test_rejected_candidate_creates_acquisition_issue() -> None:
         ]
 
     def fetcher(url: str, timeout: float = 5.0):
-        return None, "404"
+        return None, "404", 404
 
     stats = search_and_seed_sources(
         session,
@@ -44,8 +44,8 @@ def test_rejected_candidate_creates_acquisition_issue() -> None:
 
     issue = session.scalar(select(AcquisitionIssue))
     assert issue is not None
-    assert issue.reason == "fetch_failed"
-    assert stats["rejected"]["fetch_failed"] == 1
+    assert issue.reason == "http_blocked"
+    assert stats["rejected"]["http_blocked"] == 1
 
 
 def test_acquisition_issue_upsert_updates_last_seen() -> None:
@@ -63,7 +63,7 @@ def test_acquisition_issue_upsert_updates_last_seen() -> None:
         ]
 
     def fetcher(url: str, timeout: float = 5.0):
-        return None, "404"
+        return None, "404", 404
 
     first = datetime(2026, 1, 1, tzinfo=timezone.utc)
     second = first + timedelta(days=1)

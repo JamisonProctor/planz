@@ -7,6 +7,7 @@ from app.db.base import Base
 from app.db.models.search_query import SearchQuery
 from app.db.models.search_result import SearchResult
 from app.db.models.search_run import SearchRun
+from app.db.models.acquisition_issue import AcquisitionIssue
 from app.db.models.source_url import SourceUrl
 from app.services.search.seed_sources import search_and_seed_sources
 from app.services.search.types import SearchResultItem
@@ -77,20 +78,20 @@ def test_search_seeding_verifies_and_persists() -> None:
     assert len(runs) == 1
     assert len(queries) == 1
     assert len(results) == 3
-    assert len(urls) == 1
-    assert stats["accepted"] == 1
-    assert stats["rejected"]["no_date_tokens"] == 1
-    assert stats["rejected"]["archive_signals"] == 1
+    assert len(urls) == 3
+    assert stats["accepted"] == 3
+    assert stats["accepted_soft_signals"]["no_date_tokens"] == 1
+    assert stats["accepted_soft_signals"]["archive_signals"] == 1
 
 
-def test_search_seeding_rejects_past_only_dates() -> None:
+def test_search_seeding_rejects_http_blocked() -> None:
     session = _make_session()
 
     def provider_search(query: str, language: str, location: str, max_results: int):
         return [
             SearchResultItem(
-                url="https://example.com/past",
-                title="Past",
+                url="https://example.com/blocked",
+                title="Blocked",
                 snippet="snippet",
                 rank=1,
                 domain="example.com",
@@ -98,7 +99,7 @@ def test_search_seeding_rejects_past_only_dates() -> None:
         ]
 
     def fetcher(url: str, timeout: float = 5.0):
-        return "Event on 2025-01-10 " * 100, None
+        return None, "403", 403
 
     stats = search_and_seed_sources(
         session,
@@ -112,17 +113,18 @@ def test_search_seeding_rejects_past_only_dates() -> None:
 
     urls = session.scalars(select(SourceUrl)).all()
     assert urls == []
-    assert stats["rejected"]["past_only"] == 1
+    assert stats["rejected"]["http_blocked"] == 1
 
 
-def test_search_seeding_accepts_future_window_dates() -> None:
+def test_search_seeding_caps_accepted(monkeypatch) -> None:
     session = _make_session()
+    monkeypatch.setenv("PLANZ_MAX_ACCEPTED_PER_RUN", "1")
 
     def provider_search(query: str, language: str, location: str, max_results: int):
         return [
             SearchResultItem(
-                url="https://example.com/future",
-                title="Future",
+                url="https://example.com/one",
+                title="One",
                 snippet="snippet",
                 rank=1,
                 domain="example.com",
@@ -145,90 +147,11 @@ def test_search_seeding_accepts_future_window_dates() -> None:
     urls = session.scalars(select(SourceUrl)).all()
     assert len(urls) == 1
     assert stats["accepted"] == 1
+    assert stats["caps_hit"]["accepted"] is True
 
 
-def test_search_seeding_blocks_aggregators_when_disabled(monkeypatch) -> None:
+def test_search_seeding_accepts_preferred_domain_with_archive_signal() -> None:
     session = _make_session()
-    monkeypatch.setenv("PLANZ_ALLOW_AGGREGATORS", "false")
-
-    def provider_search(query: str, language: str, location: str, max_results: int):
-        return [
-            SearchResultItem(
-                url="https://eventfrog.de/events",
-                title="Agg",
-                snippet="snippet",
-                rank=1,
-                domain="eventfrog.de",
-            )
-        ]
-
-    def fetcher(url: str, timeout: float = 5.0):
-        return "Event on 2026-01-26 " * 100, None
-
-    stats = search_and_seed_sources(
-        session,
-        provider_search=provider_search,
-        fetcher=fetcher,
-        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
-        location="Munich, Germany",
-        window_days=30,
-        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
-    )
-
-    urls = session.scalars(select(SourceUrl)).all()
-    assert urls == []
-    assert stats["rejected"]["aggregator_blocked"] == 1
-
-
-def test_search_seeding_caps_aggregators_when_enabled(monkeypatch) -> None:
-    session = _make_session()
-    monkeypatch.setenv("PLANZ_ALLOW_AGGREGATORS", "true")
-
-    def provider_search(query: str, language: str, location: str, max_results: int):
-        return [
-            SearchResultItem(
-                url="https://eventfrog.de/events/1",
-                title="Agg1",
-                snippet="snippet",
-                rank=1,
-                domain="eventfrog.de",
-            ),
-            SearchResultItem(
-                url="https://eventfrog.de/events/2",
-                title="Agg2",
-                snippet="snippet",
-                rank=2,
-                domain="eventfrog.de",
-            ),
-            SearchResultItem(
-                url="https://eventfrog.de/events/3",
-                title="Agg3",
-                snippet="snippet",
-                rank=3,
-                domain="eventfrog.de",
-            ),
-        ]
-
-    def fetcher(url: str, timeout: float = 5.0):
-        return "Event on 2026-01-26 " * 100, None
-
-    stats = search_and_seed_sources(
-        session,
-        provider_search=provider_search,
-        fetcher=fetcher,
-        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
-        location="Munich, Germany",
-        window_days=30,
-        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
-    )
-
-    assert stats["accepted"] == 2
-    assert stats["rejected"]["aggregator_capped"] == 1
-
-
-def test_search_seeding_allows_preferred_domains(monkeypatch) -> None:
-    session = _make_session()
-    monkeypatch.setenv("PLANZ_ALLOW_AGGREGATORS", "false")
 
     def provider_search(query: str, language: str, location: str, max_results: int):
         return [
@@ -238,11 +161,11 @@ def test_search_seeding_allows_preferred_domains(monkeypatch) -> None:
                 snippet="snippet",
                 rank=1,
                 domain="muenchen.de",
-            )
+            ),
         ]
 
     def fetcher(url: str, timeout: float = 5.0):
-        return "Event on 2026-01-26 " * 100, None
+        return "Archiv 2023 events " * 100, None
 
     stats = search_and_seed_sources(
         session,
@@ -254,4 +177,8 @@ def test_search_seeding_allows_preferred_domains(monkeypatch) -> None:
         query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
     )
 
+    issues = session.scalars(select(AcquisitionIssue)).all()
     assert stats["accepted"] == 1
+    assert stats["accepted_soft_signals"]["archive_signals"] == 1
+    assert len(issues) == 1
+    assert issues[0].reason == "archive_signals"
