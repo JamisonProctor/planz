@@ -27,6 +27,9 @@ The system is a **multi-stage pipeline**:
 
 1. **Search + Verify**  
    - OpenAI Responses API web_search provider (via abstraction)
+   - `PLANZ_SEARCH_DEBUG=true` logs observed `web_search_call.action` shape for troubleshooting
+   - SDK responses may return typed action objects (e.g., `action.sources`), which are parsed before dict/model_dump fallbacks
+   - web_search sources can be typed objects; normalization handles dict/object/model_dump shapes
    - DE+EN multi-query bundle (`kostenlos`/`free`, `München`/`Munich`)
    - SearchRun/SearchQuery/SearchResult stored for provenance
    - SourceUrl provenance recorded via SearchResult linkage
