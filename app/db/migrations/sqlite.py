@@ -5,6 +5,7 @@ from sqlalchemy.engine import Engine
 
 from app.db.base import Base
 from app.db import models  # noqa: F401
+from app.db.migrations.external_key import ensure_external_keys
 
 
 def _get_columns(conn, table: str) -> set[str]:
@@ -29,3 +30,4 @@ def ensure_sqlite_schema(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE events ADD COLUMN google_event_id VARCHAR(255)"))
 
     Base.metadata.create_all(engine)
+    ensure_external_keys(engine)
