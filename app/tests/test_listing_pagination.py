@@ -61,3 +61,26 @@ def test_enumerate_listing_pages_stops_on_same_next() -> None:
         )
     )
     assert urls == ["https://example.com/page1"]
+
+
+def test_enumerate_listing_pages_resolves_relative() -> None:
+    html = """
+    <html><body><a rel="next" href="page2">Next</a></body></html>
+    """
+
+    pages = {
+        "https://example.com/page1": html,
+        "https://example.com/page2": PAGE2,
+    }
+
+    def fetcher(url: str, timeout: float = 10.0):
+        return pages[url], None, 200
+
+    urls = list(
+        enumerate_listing_pages(
+            start_url="https://example.com/page1",
+            fetcher=fetcher,
+            max_pages=5,
+        )
+    )
+    assert urls == ["https://example.com/page1", "https://example.com/page2"]

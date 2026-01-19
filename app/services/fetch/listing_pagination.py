@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from typing import Callable, Iterator
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
 from app.core.urls import canonicalize_url
+
+logger = logging.getLogger(__name__)
 
 
 def enumerate_listing_pages(
@@ -34,7 +38,8 @@ def enumerate_listing_pages(
         next_link = soup.find("a", rel="next")
         if not next_link or not next_link.get("href"):
             break
-        next_url = canonicalize_url(next_link["href"])
+        resolved = urljoin(current, next_link["href"])
+        next_url = canonicalize_url(resolved)
         if not next_url:
             break
         if next_url == current:

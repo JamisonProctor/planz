@@ -71,6 +71,8 @@ def main() -> None:
                 max_pages=args.pages,
             )
         )
+        if pages:
+            logger.info("Listing pages to process: %s", ", ".join(pages))
         print(f"Found listing pages: {len(pages)}")
 
         all_events = []
