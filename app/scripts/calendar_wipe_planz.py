@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timedelta, timezone
+import random
+import time
 from typing import Any, List
 
 from app.config import settings
@@ -47,13 +49,34 @@ def wipe_planz_events(client: GoogleCalendarClient, days: int, dry_run: bool, fo
     items = events_result.get("items", [])
     marked = filter_planz_events(items, force_legacy=force_legacy)
     print(f"Found {len(marked)} PLANZ events to delete (dry_run={dry_run})")
+    deleted = 0
+    failed = 0
     for event in marked:
         summary = event.get("summary")
         event_id = event.get("id")
         start = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date")
         print(f"- {start} {event_id} {summary}")
         if not dry_run and event_id:
-            events_service.delete(calendarId=client.calendar_id, eventId=event_id).execute()
+            tries = 0
+            max_tries = 5
+            while tries < max_tries:
+                try:
+                    events_service.delete(calendarId=client.calendar_id, eventId=event_id).execute()
+                    deleted += 1
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    tries += 1
+                    msg = str(exc).lower()
+                    if "ratelimit" in msg or "rate limit" in msg:
+                        backoff = (2 ** tries) + random.random()
+                        time.sleep(backoff)
+                        continue
+                    failed += 1
+                    print(f"Failed to delete {event_id}: {exc}")
+                    break
+            else:
+                failed += 1
+    print(f"Deleted: {deleted}, Failed: {failed}")
 
 
 def main() -> None:
@@ -61,11 +84,14 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=120, help="Window in days before/after today to consider")
     parser.add_argument("--dry-run", action="store_true", help="Do not delete, only list")
     parser.add_argument("--force-legacy", action="store_true", help="Also delete legacy [PLZ] prefix events without tag")
+    parser.add_argument("--sleep-ms", type=int, default=200, help="Sleep between deletions to reduce rate limits")
     args = parser.parse_args()
 
     load_env()
     configure_logging()
     client = GoogleCalendarClient(calendar_id=settings.GOOGLE_CALENDAR_ID)
+    if args.sleep_ms > 0:
+        time.sleep(args.sleep_ms / 1000)
     wipe_planz_events(client, days=args.days, dry_run=args.dry_run, force_legacy=args.force_legacy)
 
 
