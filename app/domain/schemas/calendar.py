@@ -11,3 +11,4 @@ class CalendarEvent(BaseModel):
     description: str | None = None
     source_url: str | None = None
     google_event_id: str | None = None
+    external_key: str | None = None

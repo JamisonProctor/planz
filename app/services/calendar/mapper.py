@@ -10,4 +10,6 @@ def event_to_calendar_event(event: Event) -> CalendarEvent:
         location=event.location,
         description=event.description,
         source_url=event.source_url,
+        external_key=event.external_key,
+        google_event_id=event.google_event_id,
     )

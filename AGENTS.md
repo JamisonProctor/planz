@@ -44,6 +44,11 @@ The system is a **multi-stage pipeline**:
    - Diagnostic script: `python -m app.scripts.diagnose_source_url <url>`
    - Smoke extraction: `python -m app.scripts.extract_single_url <url> [--persist]`
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
+   - Pagination helper for muenchen.de kids listings; cap via `PLANZ_MAX_LISTING_PAGES`
+   - External idempotency: `external_key` (detail_url + start_time hash) enforces DB uniqueness; calendar tagging uses `extendedProperties.private.planz_key`
+   - Calendar events keep clean titles; tagging via `extendedProperties.private.planz=true` (wipe uses this tag)
+   - Calendar location is plain address; source points to detail page; description includes single “More info” link
+   - Pagination stops when next link repeats or content hash unchanged
 
 2. **Fetch**  
    - Fetch raw page content for allowed SourceUrls
@@ -203,6 +208,8 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 2) `python -m app.scripts.run_weekly`  
 3) `python -m app.scripts.extract_single_url https://www.muenchen.de/veranstaltungen/event/kinder`  
 3) Check calendar for `[PLZ]` events
+4) `python -m app.scripts.extract_muenchen_kinder --persist`
+5) `python -m app.scripts.calendar_wipe_planz --dry-run --days 120` (only deletes `[PLZ]`/planz-marked)
 
 ---
 
@@ -212,6 +219,15 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 - Fetch produced ok content (fetched_ok > 0)
 - Extraction created events (events_created_total > 0)
 - Sync created calendar events (events_synced > 0)
+- Calendar wipe dry-run reviewed before destructive run
+
+---
+
+## Series Cache
+
+- EventSeries caches detail pages by series_key (detail_url preferred, else domain+title+location)
+- Detail pages fetched once per series; repeated dates reuse cached description
+- Updated lazily during extraction; prevents redundant detail fetch costs
 
 ---
 

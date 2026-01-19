@@ -11,6 +11,7 @@ from googleapiclient.errors import HttpError
 from app.config import settings
 from app.domain.schemas.calendar import CalendarEvent
 from app.services.calendar.base import CalendarClient
+from app.core.urls import extract_domain
 
 logger = logging.getLogger(__name__)
 
@@ -75,18 +76,18 @@ class GoogleCalendarClient(CalendarClient):
 
     @staticmethod
     def _build_event_body(calendar_event: CalendarEvent) -> dict[str, Any]:
+        summary = calendar_event.title
+
         description_parts = []
         if calendar_event.description:
             description_parts.append(calendar_event.description)
-        if calendar_event.location:
-            maps_query = quote_plus(calendar_event.location)
-            maps_url = f"https://www.google.com/maps/search/?api=1&query={maps_query}"
-            description_parts.append(f"Maps: {maps_url}")
+        else:
+            description_parts.append(summary)
         if calendar_event.source_url:
-            description_parts.append(f"Source: {calendar_event.source_url}")
+            description_parts.append(f"More info: {calendar_event.source_url}")
 
         body: dict[str, Any] = {
-            "summary": calendar_event.title,
+            "summary": summary,
             "start": {
                 "dateTime": calendar_event.start.isoformat(),
                 "timeZone": TIMEZONE,
@@ -96,6 +97,21 @@ class GoogleCalendarClient(CalendarClient):
                 "timeZone": TIMEZONE,
             },
         }
+        domain = extract_domain(calendar_event.source_url) if getattr(calendar_event, "source_url", None) else ""
+        planz_key = calendar_event.external_key or f"{calendar_event.title}:{calendar_event.start.isoformat()}"
+        body["extendedProperties"] = {
+            "private": {
+                "planz": "true",
+                "planz_source": domain or "unknown",
+                "planz_key": planz_key,
+            }
+        }
+
+        if calendar_event.source_url:
+            body["source"] = {
+                "title": domain or "source",
+                "url": calendar_event.source_url,
+            }
 
         if calendar_event.location:
             body["location"] = calendar_event.location

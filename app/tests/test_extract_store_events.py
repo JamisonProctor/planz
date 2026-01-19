@@ -85,6 +85,7 @@ def test_store_extracted_events_creates_rows() -> None:
 
     events = session.scalars(select(Event)).all()
     assert result["created"] == 2
+    assert result["updated"] == 0
     assert len(events) == 2
     assert source_url.last_extracted_hash == "hash2"
     assert source_url.last_extracted_at == now
@@ -111,6 +112,7 @@ def test_store_extracted_events_ignores_invalid_items() -> None:
 
     events = session.scalars(select(Event)).all()
     assert result["created"] == 1
+    assert result["updated"] == 0
     assert len(events) == 1
 
 
@@ -123,3 +125,4 @@ def test_store_extracted_events_handles_empty_list() -> None:
     )
 
     assert result["created"] == 0
+    assert result["updated"] == 0

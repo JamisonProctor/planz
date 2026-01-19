@@ -21,5 +21,11 @@ def ensure_sqlite_schema(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE source_urls ADD COLUMN last_extraction_status TEXT"))
         if "last_extraction_error" not in columns:
             conn.execute(text("ALTER TABLE source_urls ADD COLUMN last_extraction_error TEXT"))
+        event_columns = _get_columns(conn, "events")
+        if event_columns:
+            if "external_key" not in event_columns:
+                conn.execute(text("ALTER TABLE events ADD COLUMN external_key VARCHAR(255)"))
+            if "google_event_id" not in event_columns:
+                conn.execute(text("ALTER TABLE events ADD COLUMN google_event_id VARCHAR(255)"))
 
     Base.metadata.create_all(engine)

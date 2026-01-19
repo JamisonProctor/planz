@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
 import logging
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.event import Event
@@ -25,9 +27,10 @@ def store_extracted_events(
         and source_url.content_hash
         and source_url.last_extracted_hash == source_url.content_hash
     ):
-        return {"created": 0, "discarded_past": 0, "invalid": 0}
+        return {"created": 0, "updated": 0, "discarded_past": 0, "invalid": 0}
 
     created = 0
+    updated = 0
     discarded_past = 0
     invalid = 0
     tz = ZoneInfo("Europe/Berlin")
@@ -61,8 +64,8 @@ def store_extracted_events(
                 start_time=start_time,
                 end_time=end_time,
                 location=location,
-                description=None,
-                source_url=source_url.url,
+                description=_as_str(item.get("description")) or None,
+                source_url=item.get("detail_url") or source_url.url,
             )
             if not derived_events:
                 logger.info(
@@ -79,8 +82,9 @@ def store_extracted_events(
                     "start_time": start_time,
                     "end_time": end_time,
                     "location": location,
-                    "description": None,
-                    "source_url": source_url.url,
+                    "description": _as_str(item.get("description")) or None,
+                    "source_url": item.get("detail_url") or source_url.url,
+                    "detail_url": item.get("detail_url"),
                 }
             ]
 
@@ -89,16 +93,33 @@ def store_extracted_events(
                 discarded_past += 1
                 continue
 
-            event = Event(
-                title=derived["title"],
+            external_key = _build_external_key(
+                detail_url=derived.get("detail_url") or derived["source_url"],
                 start_time=derived["start_time"],
-                end_time=derived["end_time"],
-                location=derived["location"],
-                description=derived["description"],
-                source_url=derived["source_url"],
             )
-            session.add(event)
-            created += 1
+            stmt = select(Event).where(Event.external_key == external_key)
+            existing = session.scalar(stmt)
+            if existing:
+                existing.title = derived["title"]
+                existing.start_time = derived["start_time"]
+                existing.end_time = derived["end_time"]
+                existing.location = derived["location"]
+                existing.description = derived["description"]
+                existing.source_url = derived.get("detail_url") or derived["source_url"]
+                existing.external_key = external_key
+                updated += 1
+            else:
+                event = Event(
+                    title=derived["title"],
+                    start_time=derived["start_time"],
+                    end_time=derived["end_time"],
+                    location=derived["location"],
+                    description=derived["description"],
+                    source_url=derived.get("detail_url") or derived["source_url"],
+                    external_key=external_key,
+                )
+                session.add(event)
+                created += 1
 
     source_url.last_extracted_hash = source_url.content_hash
     source_url.last_extracted_at = now
@@ -113,6 +134,7 @@ def store_extracted_events(
 
     return {
         "created": created,
+        "updated": updated,
         "discarded_past": discarded_past,
         "invalid": invalid,
     }
@@ -136,6 +158,11 @@ def _parse_datetime(value: Any, tz: ZoneInfo) -> datetime | None:
         parsed = parsed.replace(tzinfo=tz)
 
     return parsed
+
+
+def _build_external_key(detail_url: str, start_time: datetime) -> str:
+    raw = f"{detail_url}|{start_time.isoformat()}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _truncate_item(item: Any, limit: int = 200) -> str:

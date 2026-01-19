@@ -10,9 +10,10 @@ from app.services.calendar.sync_events import sync_unsynced_events
 
 
 class _FakeCalendarClient:
-    def __init__(self, responses: list[str | Exception]) -> None:
+    def __init__(self, responses: list[str | Exception], existing: str | None = None) -> None:
         self._responses = responses
         self.calls: int = 0
+        self.existing = existing
 
     def upsert_event(self, calendar_event):
         response = self._responses[self.calls]
@@ -20,6 +21,9 @@ class _FakeCalendarClient:
         if isinstance(response, Exception):
             raise response
         return response
+
+    def find_event_by_key(self, key: str) -> str | None:
+        return self.existing
 
 
 def _make_session():
@@ -163,3 +167,24 @@ def test_sync_unsynced_events_skips_recent_past_by_default() -> None:
     assert stats["synced_count"] == 0
     assert stats["skipped_too_old"] == 2
     assert len(rows) == 0
+
+
+def test_sync_unsynced_events_updates_existing_id() -> None:
+    session = _make_session()
+    now = datetime.now(tz=timezone.utc)
+
+    event = Event(
+        title="Event",
+        start_time=now + timedelta(days=1),
+        end_time=now + timedelta(days=1, hours=1),
+        external_key="key1",
+    )
+    session.add(event)
+    session.commit()
+
+    client = _FakeCalendarClient(["updated-id"], existing="existing-id")
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0)
+
+    refreshed = session.get(Event, event.id)
+    assert stats["synced_count"] == 1
+    assert refreshed.google_event_id == "updated-id"
