@@ -182,3 +182,81 @@ def test_search_seeding_accepts_preferred_domain_with_archive_signal() -> None:
     assert stats["accepted_soft_signals"]["archive_signals"] == 1
     assert len(issues) == 1
     assert issues[0].reason == "archive_signals"
+
+
+def test_search_seeding_uses_playwright_on_http_block(monkeypatch) -> None:
+    session = _make_session()
+    monkeypatch.setenv("PLANZ_USE_PLAYWRIGHT", "true")
+    monkeypatch.setenv("PLANZ_PLAYWRIGHT_ALLOWLIST", "example.com")
+
+    def provider_search(query: str, language: str, location: str, max_results: int):
+        return [
+            SearchResultItem(
+                url="https://example.com/js",
+                title="JS",
+                snippet="snippet",
+                rank=1,
+                domain="example.com",
+            )
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return None, "403", 403
+
+    def playwright_fetcher(url: str, timeout: float = 5.0):
+        return "Event on 2026-01-26 " * 100, None, 200
+
+    stats = search_and_seed_sources(
+        session,
+        provider_search=provider_search,
+        fetcher=fetcher,
+        playwright_fetcher=playwright_fetcher,
+        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
+        location="Munich, Germany",
+        window_days=30,
+        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
+    )
+
+    urls = session.scalars(select(SourceUrl)).all()
+    issues = session.scalars(select(AcquisitionIssue)).all()
+    assert len(urls) == 1
+    assert stats["accepted"] == 1
+    assert any(issue.reason == "http_blocked" for issue in issues)
+
+
+def test_search_seeding_marks_js_required(monkeypatch) -> None:
+    session = _make_session()
+    monkeypatch.setenv("PLANZ_USE_PLAYWRIGHT", "true")
+    monkeypatch.setenv("PLANZ_PLAYWRIGHT_ALLOWLIST", "example.com")
+
+    def provider_search(query: str, language: str, location: str, max_results: int):
+        return [
+            SearchResultItem(
+                url="https://example.com/js",
+                title="JS",
+                snippet="snippet",
+                rank=1,
+                domain="example.com",
+            )
+        ]
+
+    def fetcher(url: str, timeout: float = 5.0):
+        return "<script></script>" * 200, None
+
+    def playwright_fetcher(url: str, timeout: float = 5.0):
+        return "Event on 2026-01-26 " * 100, None, 200
+
+    stats = search_and_seed_sources(
+        session,
+        provider_search=provider_search,
+        fetcher=fetcher,
+        playwright_fetcher=playwright_fetcher,
+        now=datetime(2026, 1, 18, tzinfo=timezone.utc),
+        location="Munich, Germany",
+        window_days=30,
+        query_bundle=[{"language": "en", "intent": "kids", "query": "kids"}],
+    )
+
+    issues = session.scalars(select(AcquisitionIssue)).all()
+    assert stats["accepted"] == 1
+    assert any(issue.reason == "js_required" for issue in issues)

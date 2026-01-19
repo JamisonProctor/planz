@@ -17,6 +17,7 @@ from app.services.search.acquisition_issues import upsert_acquisition_issue
 from app.services.search.query_bundle import build_query_bundle
 from app.services.search.types import SearchResultItem
 from app.services.search.verify_sources import verify_candidate_url
+from app.services.fetch.playwright_fetcher import fetch_url_playwright, is_allowlisted
 
 PREFERRED_URL_KEYWORDS = ["termine", "kalender", "veranstaltungen", "programm"]
 PREFERRED_DOMAINS = {
@@ -49,6 +50,7 @@ def search_and_seed_sources(
     window_days: int,
     max_results: int = 8,
     query_bundle: list[dict[str, str]] | None = None,
+    playwright_fetcher: Callable[[str, float], tuple[str | None, str | None, int | None]] = fetch_url_playwright,
 ) -> dict[str, object]:
     run = SearchRun(location=location, window_days=window_days)
     session.add(run)
@@ -118,12 +120,68 @@ def search_and_seed_sources(
             url, fetcher=fetcher
         )
         fetched_count += 1
+
+        domain = search_result.domain
+        use_playwright = (
+            os.getenv("PLANZ_USE_PLAYWRIGHT", "").strip().lower()
+            in {"true", "1", "yes"}
+        )
+        allowlisted_domain = is_allowlisted(domain)
+
+        if not ok and reason == "http_blocked" and use_playwright and allowlisted_domain:
+            upsert_acquisition_issue(
+                session,
+                url=canonical or url,
+                domain=domain,
+                reason="http_blocked",
+                now=now,
+                http_status=status,
+                content_length=content_length,
+                discovered_search_result_id=search_result.id,
+            )
+            pw_ok, pw_reason, pw_canonical, pw_len, pw_soft, pw_status = verify_candidate_url(
+                url, fetcher=playwright_fetcher
+            )
+            if pw_ok:
+                ok, reason, canonical, content_length, soft_signal, status = (
+                    pw_ok,
+                    pw_reason,
+                    pw_canonical,
+                    pw_len,
+                    pw_soft,
+                    pw_status,
+                )
+
+        if ok and soft_signal == "js_suspected" and use_playwright and allowlisted_domain:
+            upsert_acquisition_issue(
+                session,
+                url=canonical or url,
+                domain=domain,
+                reason="js_required",
+                now=now,
+                http_status=status,
+                content_length=content_length,
+                discovered_search_result_id=search_result.id,
+            )
+            pw_ok, pw_reason, pw_canonical, pw_len, pw_soft, pw_status = verify_candidate_url(
+                url, fetcher=playwright_fetcher
+            )
+            if pw_ok:
+                ok, reason, canonical, content_length, soft_signal, status = (
+                    pw_ok,
+                    pw_reason,
+                    pw_canonical,
+                    pw_len,
+                    pw_soft,
+                    pw_status,
+                )
+
         if not ok:
             rejected[reason] += 1
             upsert_acquisition_issue(
                 session,
                 url=canonical or url,
-                domain=search_result.domain,
+                domain=domain,
                 reason=reason,
                 now=now,
                 http_status=status,
@@ -137,7 +195,7 @@ def search_and_seed_sources(
             upsert_acquisition_issue(
                 session,
                 url=canonical or url,
-                domain=search_result.domain,
+                domain=domain,
                 reason=soft_signal,
                 now=now,
                 http_status=status,

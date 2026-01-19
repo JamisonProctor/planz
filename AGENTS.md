@@ -40,6 +40,10 @@ The system is a **multi-stage pipeline**:
    - Domain blocklist for v1: Meetup/Eventbrite are blocked
    - Caps: `PLANZ_MAX_FETCHED_PER_RUN`, `PLANZ_MAX_ACCEPTED_PER_RUN`
    - AcquisitionIssue registry tracks uncapturable URLs and reasons
+   - Playwright fallback: controlled by `PLANZ_USE_PLAYWRIGHT` and `PLANZ_PLAYWRIGHT_ALLOWLIST`
+   - Diagnostic script: `python -m app.scripts.diagnose_source_url <url>`
+   - Smoke extraction: `python -m app.scripts.extract_single_url <url> [--persist]`
+   - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
 
 2. **Fetch**  
    - Fetch raw page content for allowed SourceUrls
@@ -197,6 +201,7 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 
 1) `python -m app.scripts.search_and_seed_sources`  
 2) `python -m app.scripts.run_weekly`  
+3) `python -m app.scripts.extract_single_url https://www.muenchen.de/veranstaltungen/event/kinder`  
 3) Check calendar for `[PLZ]` events
 
 ---

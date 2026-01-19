@@ -4,8 +4,9 @@ from app.services.fetch.http_fetcher import fetch_url_text
 
 
 class _FakeResponse:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, status_code: int = 200) -> None:
         self.text = text
+        self.status_code = status_code
 
     def raise_for_status(self) -> None:
         return None
@@ -37,9 +38,10 @@ def test_fetch_url_text_success(monkeypatch) -> None:
 
     monkeypatch.setattr(httpx, "Client", fake_client)
 
-    text, error = fetch_url_text("https://example.com")
+    text, error, status = fetch_url_text("https://example.com")
     assert text == "ok"
     assert error is None
+    assert status == 200
 
 
 def test_fetch_url_text_error(monkeypatch) -> None:
@@ -48,6 +50,7 @@ def test_fetch_url_text_error(monkeypatch) -> None:
 
     monkeypatch.setattr(httpx, "Client", fake_client)
 
-    text, error = fetch_url_text("https://example.com")
+    text, error, status = fetch_url_text("https://example.com")
     assert text is None
     assert error is not None
+    assert status is None

@@ -43,7 +43,24 @@ def test_run_weekly_reports_no_sources(monkeypatch, capsys) -> None:
         return 0
 
     def search_runner(**kwargs):
-        return {"queries_executed": 0, "total_results": 0, "unique_candidates": 0, "accepted": 0, "rejected": {"blocked_domain": 0, "fetch_failed": 0, "too_short": 0, "no_date_tokens": 0, "archive_signals": 0}}
+        return {
+            "queries_executed": 0,
+            "total_results": 0,
+            "unique_candidates": 0,
+            "accepted": 0,
+            "rejected": {
+                "blocked_domain": 0,
+                "http_blocked": 0,
+                "fetch_failed": 0,
+                "too_short": 0,
+            },
+            "accepted_soft_signals": {
+                "archive_signals": 0,
+                "no_date_tokens": 0,
+                "js_suspected": 0,
+            },
+            "caps_hit": {"accepted": False, "fetched": False},
+        }
 
     run_weekly_pipeline(
         session=session,
@@ -89,7 +106,24 @@ def test_run_weekly_reports_missing_openai_key_when_needed(monkeypatch, capsys) 
         return 0
 
     def search_runner(**kwargs):
-        return {"queries_executed": 0, "total_results": 0, "unique_candidates": 0, "accepted": 0, "rejected": {"blocked_domain": 0, "fetch_failed": 0, "too_short": 0, "no_date_tokens": 0, "archive_signals": 0}}
+        return {
+            "queries_executed": 0,
+            "total_results": 0,
+            "unique_candidates": 0,
+            "accepted": 0,
+            "rejected": {
+                "blocked_domain": 0,
+                "http_blocked": 0,
+                "fetch_failed": 0,
+                "too_short": 0,
+            },
+            "accepted_soft_signals": {
+                "archive_signals": 0,
+                "no_date_tokens": 0,
+                "js_suspected": 0,
+            },
+            "caps_hit": {"accepted": False, "fetched": False},
+        }
 
     run_weekly_pipeline(
         session=session,
