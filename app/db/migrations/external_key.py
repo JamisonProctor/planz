@@ -24,10 +24,17 @@ def ensure_external_keys(engine: Engine) -> None:
         rows = conn.execute(
             text("SELECT id, external_key, source_url, title, start_time FROM events")
         ).fetchall()
+        seen: set[str] = set()
         for row in rows:
-            if row.external_key:
-                continue
-            key = _build_external_key(row.source_url, row.title, row.start_time)
+            key = row.external_key
+            if not key:
+                key = _build_external_key(row.source_url, row.title, row.start_time)
+            base_key = key
+            suffix = 1
+            while key in seen:
+                key = _hash_with_suffix(base_key, suffix)
+                suffix += 1
+            seen.add(key)
             conn.execute(
                 text("UPDATE events SET external_key=:key WHERE id=:id"),
                 {"key": key, "id": row.id},
@@ -48,3 +55,8 @@ def _get_columns(conn, table: str) -> set[str]:
 def _get_indexes(conn, table: str) -> set[str]:
     rows = conn.execute(text(f"PRAGMA index_list({table})")).fetchall()
     return {row[1] for row in rows}
+
+
+def _hash_with_suffix(base: str, suffix: int) -> str:
+    raw = f"{base}:{suffix}"
+    return hashlib.sha256(raw.encode()).hexdigest()

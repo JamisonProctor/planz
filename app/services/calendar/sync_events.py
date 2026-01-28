@@ -49,16 +49,25 @@ def sync_unsynced_events(
             calendar_event.google_event_id = event.google_event_id
         elif hasattr(calendar_client, "find_event_by_key") and calendar_event.external_key:
             try:
-                existing_id = calendar_client.find_event_by_key(calendar_event.external_key)
+                try:
+                    existing_id = calendar_client.find_event_by_key(calendar_event.external_key, calendar_event)
+                except TypeError:
+                    existing_id = calendar_client.find_event_by_key(calendar_event.external_key)
                 if existing_id:
                     calendar_event.google_event_id = existing_id
                     event.google_event_id = existing_id
             except Exception:
-                logger.info("find_event_by_key failed; proceeding to insert")
+                logger.info("find_event_by_key failed; proceeding to insert", exc_info=logger.isEnabledFor(logging.DEBUG))
         try:
             calendar_event_id = calendar_client.upsert_event(calendar_event)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to sync event id=%s: %s", event.id, exc, exc_info=True)
+            logger.error(
+                "Failed to sync event id=%s title=%s: %s",
+                event.id,
+                event.title,
+                exc,
+                exc_info=logger.isEnabledFor(logging.DEBUG),
+            )
             continue
 
         event.google_event_id = calendar_event_id

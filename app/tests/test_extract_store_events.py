@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.db.models.event import Event
+from app.db.models.calendar_sync import CalendarSync
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.services.extract.store_extracted_events import store_extracted_events
@@ -126,3 +127,83 @@ def test_store_extracted_events_handles_empty_list() -> None:
 
     assert result["created"] == 0
     assert result["updated"] == 0
+
+
+def test_store_extracted_events_idempotent_same_event() -> None:
+    session = _make_session()
+    source_url = _create_source_url(session, content_hash="hash5")
+    now = datetime.now(tz=timezone.utc)
+    start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    end = (now + timedelta(days=2, hours=1)).astimezone(timezone.utc).isoformat()
+    extracted = [
+        {
+            "title": "Event A",
+            "start_time": start,
+            "end_time": end,
+            "location": "Munich",
+            "detail_url": "https://example.com/a",
+        }
+    ]
+
+    first = store_extracted_events(session, source_url, extracted, now=now)
+    second = store_extracted_events(session, source_url, extracted, now=now)
+
+    events = session.scalars(select(Event)).all()
+    assert first["created"] == 1
+    assert second["created"] == 0
+    assert len(events) == 1
+
+
+def test_store_extracted_events_updates_and_marks_for_resync() -> None:
+    session = _make_session()
+    source_url = _create_source_url(session, content_hash="hash6")
+    now = datetime.now(tz=timezone.utc)
+    start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    end = (now + timedelta(days=2, hours=1)).astimezone(timezone.utc).isoformat()
+    extracted = [
+        {
+            "title": "Event A",
+            "start_time": start,
+            "end_time": end,
+            "location": "Munich",
+            "detail_url": "https://example.com/a",
+            "description": "old",
+        }
+    ]
+
+    store_extracted_events(session, source_url, extracted, now=now)
+    event = session.scalars(select(Event)).first()
+    event.google_event_id = "gcal-1"
+    session.commit()
+    # Simulate existing sync record
+    session.add(
+        CalendarSync(
+            event_id=event.id,
+            provider="google",
+            calendar_event_id="gcal-1",
+            synced_at=now,
+        )
+    )
+    session.commit()
+
+    source_url.content_hash = "hash6b"
+    session.commit()
+    updated_payload = [
+        {
+            "title": "Event A",
+            "start_time": start,
+            "end_time": end,
+            "location": "Munich",
+            "detail_url": "https://example.com/a",
+            "description": "new description",
+        }
+    ]
+
+    stats = store_extracted_events(session, source_url, updated_payload, now=now)
+    refreshed = session.scalars(select(Event)).first()
+    sync_rows = session.scalars(select(CalendarSync)).all()
+
+    assert stats["updated"] == 1
+    assert refreshed.description == "new description"
+    assert refreshed.google_event_id is None
+    assert sync_rows == []

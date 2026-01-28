@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.models.event import Event
 from app.db.models.source_url import SourceUrl
 from app.services.extract.weekend_slicer import derive_weekend_events
+from app.db.models.calendar_sync import CalendarSync
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ def store_extracted_events(
     invalid = 0
     tz = ZoneInfo("Europe/Berlin")
     today = now.astimezone(tz).date()
+
+    event_cache: dict[str, Event] = {}
 
     for item in extracted_events:
         if not isinstance(item, dict):
@@ -97,16 +100,19 @@ def store_extracted_events(
                 detail_url=derived.get("detail_url") or derived["source_url"],
                 start_time=derived["start_time"],
             )
-            stmt = select(Event).where(Event.external_key == external_key)
-            existing = session.scalar(stmt)
+            existing = event_cache.get(external_key)
+            if existing is None:
+                stmt = select(Event).where(Event.external_key == external_key)
+                existing = session.scalar(stmt)
             if existing:
-                existing.title = derived["title"]
-                existing.start_time = derived["start_time"]
-                existing.end_time = derived["end_time"]
-                existing.location = derived["location"]
-                existing.description = derived["description"]
-                existing.source_url = derived.get("detail_url") or derived["source_url"]
+                changed = _apply_updates(existing, derived)
                 existing.external_key = external_key
+                event_cache[external_key] = existing
+                if changed:
+                    _mark_for_resync(session, existing.id)
+                    updated += 1
+            elif external_key in event_cache:
+                # already created in this batch, skip creating duplicate
                 updated += 1
             else:
                 event = Event(
@@ -119,6 +125,7 @@ def store_extracted_events(
                     external_key=external_key,
                 )
                 session.add(event)
+                event_cache[external_key] = event
                 created += 1
 
     source_url.last_extracted_hash = source_url.content_hash
@@ -170,3 +177,20 @@ def _truncate_item(item: Any, limit: int = 200) -> str:
     if len(text) > limit:
         return f"{text[:limit]}..."
     return text
+
+
+def _apply_updates(existing: Event, derived: dict[str, Any]) -> bool:
+    changed = False
+    for field in ["title", "start_time", "end_time", "location", "description", "source_url"]:
+        new_val = derived.get(field) or (derived.get("detail_url") if field == "source_url" else getattr(existing, field))
+        if getattr(existing, field) != new_val:
+            setattr(existing, field, new_val)
+            changed = True
+    return changed
+
+
+def _mark_for_resync(session: Session, event_id) -> None:
+    session.query(CalendarSync).filter(CalendarSync.event_id == event_id).delete(synchronize_session=False)
+    event = session.get(Event, event_id)
+    if event:
+        event.google_event_id = None

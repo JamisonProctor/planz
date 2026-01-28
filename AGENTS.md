@@ -46,13 +46,18 @@ The system is a **multi-stage pipeline**:
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
    - Pagination helper for muenchen.de kids listings; cap via `PLANZ_MAX_LISTING_PAGES`
    - Pagination stops when next link repeats or content hash unchanged; logged URLs: "Listing pages to process: ..."
+   - Run `python -m app.scripts.migrate_db` before first use to backfill and enforce unique external keys
    - External idempotency: `external_key` (detail_url + start_time hash) enforces DB uniqueness; calendar tagging uses `extendedProperties.private.planz_key`
    - Calendar events keep clean titles; tagging via `extendedProperties.private.planz=true` (wipe uses this tag)
    - Calendar location is plain address; source points to detail page; description includes single “More info” link
-   - Pagination stops when next link repeats or content hash unchanged
+   - Calendar upserts include `extendedProperties.private.planz_key` and retry on Google `rateLimitExceeded` with backoff; wipe uses the tag to delete only PLANZ events
+   - Calendar search/list calls enforce `timeMax > timeMin`; malformed windows are logged once and skipped (no crashes)
+   - Event idempotency: deterministic `external_key`/event_key derived from detail_url+start_time; store updates existing rows (no duplicates); content changes clear sync markers to trigger re-sync
+   - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
+   - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
 
 2. **Fetch**  
-   - Fetch raw page content for allowed SourceUrls
+ - Fetch raw page content for allowed SourceUrls
    - Persist fetch metadata, hashes, and excerpts
    - Never refetch unnecessarily
 

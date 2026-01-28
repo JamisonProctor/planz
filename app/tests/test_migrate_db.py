@@ -57,3 +57,24 @@ def test_duplicate_external_key_fails(tmp_path: Path) -> None:
             assert False, "Expected unique constraint"
         except Exception:
             pass
+
+
+def test_duplicate_external_key_resolved(tmp_path: Path) -> None:
+    db_path = tmp_path / "test2.db"
+    engine = create_engine(f"sqlite:///{db_path}", future=True)
+    with engine.begin() as conn:
+        conn.execute(
+            text("CREATE TABLE events (id TEXT PRIMARY KEY, source_url TEXT, title TEXT, start_time TEXT, external_key TEXT)")
+        )
+        conn.execute(
+            text("INSERT INTO events (id, source_url, title, start_time, external_key) VALUES ('1','u','t','2026-01-01T00:00:00+00:00','dup')")
+        )
+        conn.execute(
+            text("INSERT INTO events (id, source_url, title, start_time, external_key) VALUES ('2','u','t','2026-01-01T00:00:00+00:00','dup')")
+        )
+
+    ensure_external_keys(engine)
+    with engine.connect() as conn2:
+        rows = conn2.execute(text("SELECT external_key FROM events")).fetchall()
+        keys = [row[0] for row in rows]
+        assert len(set(keys)) == 2
