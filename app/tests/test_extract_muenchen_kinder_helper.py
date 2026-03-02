@@ -278,6 +278,39 @@ def test_extract_detail_events_single_occurrence_is_always_candidate() -> None:
     assert events[0].get("is_calendar_candidate", True) is True
 
 
+def test_max_items_counts_listing_items_not_expanded_rows() -> None:
+    """max_items=2 should process 2 listing entries, even if the first expands to many rows."""
+    listing_html = """
+    <html><body>
+    <div class="card">
+      <div>05 MÄRZ bis 09 MÄRZ</div>
+      <a href="/veranstaltungen/ausstellungen/kinder/long-running">Long Running</a>
+      <div>Do. 05.03.2026 10:00 - 17:00 Uhr</div>
+    </div>
+    <div class="card">
+      <a href="/veranstaltungen/ausstellungen/kinder/single-event">Single Event</a>
+      <div>Sa. 14.03.2026 11:00 - 13:00 Uhr</div>
+    </div>
+    <div class="card">
+      <a href="/veranstaltungen/ausstellungen/kinder/third-event">Third Event</a>
+      <div>So. 15.03.2026 14:00 - 16:00 Uhr</div>
+    </div>
+    </body></html>
+    """
+
+    events = extract_detail_events_from_listing(
+        listing_html=listing_html,
+        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+        max_items=2,
+    )
+
+    titles = [e["title"] for e in events]
+    # First item expands to 5 rows (Mar 5-9), second item is 1 row; third must be excluded
+    assert len(events) == 6
+    assert all(t == "Long Running" for t in titles[:5])
+    assert titles[5] == "Single Event"
+
+
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
     assert _resolve_sync_limit(None) == 200
-    assert _resolve_sync_limit(3) == 3
+    assert _resolve_sync_limit(3) == 60  # 3 items * 20 expansion factor

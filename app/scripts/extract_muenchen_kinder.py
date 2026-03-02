@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-events",
         type=int,
         default=None,
-        help="Only process the first N listing entries across the run",
+        help="Only process the first N unique listing items (each may expand to multiple date rows)",
     )
     parser.add_argument("--persist", action="store_true", help="Persist events to DB")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
@@ -106,8 +106,9 @@ def extract_detail_events_from_listing(
 ) -> list[dict]:
     events: list[dict] = []
     listing_meta = parse_listing(listing_html, listing_url)
+    items_processed = 0
     for item in listing_meta:
-        if max_items is not None and len(events) >= max_items:
+        if max_items is not None and items_processed >= max_items:
             break
         detail_url = item.get("detail_url")
         address = item.get("address")
@@ -115,11 +116,7 @@ def extract_detail_events_from_listing(
         extracted = _structured_events_from_listing_item(item)
         if not extracted:
             continue
-        if max_items is not None:
-            remaining_slots = max_items - len(events)
-            if remaining_slots <= 0:
-                break
-            extracted = extracted[:remaining_slots]
+        items_processed += 1
         for ev in extracted:
             if detail_url:
                 ev["detail_url"] = detail_url
@@ -263,7 +260,7 @@ def _copy_time_to_date(source: datetime, target_date: date) -> datetime:
 
 def _resolve_sync_limit(max_events: int | None) -> int:
     if max_events is not None:
-        return max_events
+        return max_events * 20  # each listing item may expand to many date rows
     return 200
 
 

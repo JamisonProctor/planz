@@ -56,7 +56,7 @@ The system is a **multi-stage pipeline**:
    - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG, and stopping a heartbeat must not block the pipeline while waiting for the interval sleep to expire; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
    - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
    - `extract_muenchen_kinder` supports `--sync-days <N>` to limit calendar sync to events starting within the next `N` days for controlled validation runs
-   - `extract_muenchen_kinder` supports `--max-events <N>` to cap how many listing entries are processed for fast debug runs
+   - `extract_muenchen_kinder` supports `--max-events <N>` to cap how many unique listing items are processed; each item may expand to multiple date rows (e.g. a range event), so total DB rows may exceed N
 
 2. **Fetch**
  - Fetch raw page content for allowed SourceUrls
