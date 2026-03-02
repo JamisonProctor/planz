@@ -209,6 +209,21 @@ def test_store_extracted_events_updates_and_marks_for_resync() -> None:
     assert sync_rows == []
 
 
+def test_store_extracted_events_defaults_end_time_to_two_hours() -> None:
+    """When no end_time is provided, end_time should default to start_time + 2 hours."""
+    session = _make_session()
+    source_url = _create_source_url(session, content_hash="hash-duration")
+    now = datetime.now(tz=timezone.utc)
+    start = (now + timedelta(days=2)).replace(hour=19, minute=30, second=0, microsecond=0).isoformat()
+
+    extracted = [{"title": "Show", "start_time": start, "detail_url": "https://example.com/show"}]
+
+    store_extracted_events(session, source_url, extracted, now=now)
+    event = session.scalars(select(Event)).one()
+
+    assert event.end_time == event.start_time + timedelta(hours=2)
+
+
 def test_store_extracted_events_respects_is_calendar_candidate_false() -> None:
     """is_calendar_candidate=False from the extractor must not be overridden to True."""
     session = _make_session()

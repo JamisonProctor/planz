@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import logging
 from typing import Any
@@ -58,7 +58,7 @@ def store_extracted_events(
             continue
 
         if end_time is None:
-            end_time = start_time
+            end_time = start_time + timedelta(hours=2)
 
         derived_events = []
         if end_time.date() > start_time.date():
