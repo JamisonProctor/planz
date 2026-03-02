@@ -36,8 +36,8 @@ The system is a **multi-stage pipeline**:
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
    - `extract_muenchen_kinder` must parse listing entries as structured occurrence rows first (title, schedule, location, ticket link) so repeated dates on the listing page are preserved instead of collapsed
    - For this source, the listing row is the canonical event record; do not use detail-page LLM extraction to invent title/date/location fields
-   - Detail pages may still be fetched for enrichment, but only to generate a short summary and optional cost note, not to create the event row itself
-   - Do not pass the full multi-event listing page into each per-event LLM call; send only normalized detail-page text when summarizing
+   - For the current no-LLM validation path, `extract_muenchen_kinder` does not call the LLM and does not depend on detail-page enrichment; calendar notes rely on the stored event URL and the calendar client appends the single “More info” link
+   - Visible listing date ranges like `03 MÄRZ bis 21 JUNI` must be expanded into one event row per calendar day, reusing the visible start/end times on each generated day when times are available
    - For muenchen.de kids events, the event detail URL (not the listing URL) is the canonical source URL used for DB rows and calendar source links
    - If a muenchen.de kids listing card exposes a ticket icon/link, that ticket URL overrides the calendar/source link for the event while the detail URL remains the extraction target
    - Ticket-link events must be visually marked with a leading ticket emoji in the event title so calendar users can identify them immediately
@@ -63,8 +63,8 @@ The system is a **multi-stage pipeline**:
 
 3. **Extraction**  
    - LLM-based extraction of IRL events from fetched content
-   - For the muenchen kids listing, the LLM is used only as a detail-page summarizer after structured listing extraction; it is not the primary source of event fields
-   - When the LLM is used, keep reasoning effort at the lowest supported setting to minimize latency and token overhead
+   - For the muenchen kids listing validation flow, structured listing extraction is currently fully non-LLM
+   - When the LLM is used elsewhere, keep reasoning effort at the lowest supported setting to minimize latency and token overhead
    - Idempotent via content hash comparison
    - Produces structured `Event` rows
    - Extraction stats persisted per `SourceUrl` (status/count/error)

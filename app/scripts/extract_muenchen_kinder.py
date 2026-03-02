@@ -1,23 +1,18 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
-from time import monotonic
 
 from app.config import settings
 from app.core.env import load_env
 from app.db.migrations.sqlite import ensure_sqlite_schema
 from app.db.session import engine, get_session
 from app.logging import configure_logging
-from app.services.extract.html_to_text import HtmlToText
-from app.services.extract.llm_event_extractor import summarize_event_detail
-from app.services.extract.series_cache import enrich_with_series_cache
 from app.services.extract.store_extracted_events import store_extracted_events
 from app.services.extract.muenchen_listing_parser import parse_listing
 from app.services.fetch.http_fetcher import fetch_url_text
 from app.services.fetch.listing_pagination import enumerate_listing_pages
-from app.services.fetch.playwright_fetcher import fetch_url_playwright
 from app.services.calendar.google_calendar_service import GoogleCalendarClient
 from app.services.calendar.sync_events import sync_unsynced_events
 from app.utils.heartbeat import start_heartbeat
@@ -26,10 +21,35 @@ from sqlalchemy import select
 
 from app.db.models.source_domain import get_or_create_domain
 from app.db.models.source_url import SourceUrl
-from app.db.models.source_url_discovery import SourceUrlDiscovery
 
 logger = logging.getLogger(__name__)
 TICKET_PREFIX = "🎟 "
+_MONTHS = {
+    "JAN": 1,
+    "JANUAR": 1,
+    "FEB": 2,
+    "FEBRUAR": 2,
+    "MAERZ": 3,
+    "MÄRZ": 3,
+    "APR": 4,
+    "APRIL": 4,
+    "MAI": 5,
+    "JUN": 6,
+    "JUNI": 6,
+    "JUL": 7,
+    "JULI": 7,
+    "AUG": 8,
+    "AUGUST": 8,
+    "SEP": 9,
+    "SEPT": 9,
+    "SEPTEMBER": 9,
+    "OKT": 10,
+    "OKTOBER": 10,
+    "NOV": 11,
+    "NOVEMBER": 11,
+    "DEZ": 12,
+    "DEZEMBER": 12,
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -121,51 +141,99 @@ def _structured_events_from_listing_item(item: dict) -> list[dict]:
     if not isinstance(title, str) or not title.strip() or not isinstance(start_time, str):
         return []
 
-    event = {
-        "title": title.strip(),
-        "start_time": start_time,
-        "location": item.get("location") or item.get("address"),
-        "detail_url": item["detail_url"],
-        "source_url": item["detail_url"],
-    }
-    if isinstance(item.get("raw_schedule"), str):
-        event["raw_schedule"] = item["raw_schedule"]
-    if isinstance(item.get("end_time"), str):
-        event["end_time"] = item["end_time"]
-    return [event]
+    events: list[dict] = []
+    for slot_start, slot_end in _expand_visible_date_range(
+        start_time=start_time,
+        end_time=item.get("end_time"),
+        listing_text=item.get("listing_text"),
+    ):
+        event = {
+            "title": title.strip(),
+            "start_time": slot_start,
+            "location": item.get("location") or item.get("address"),
+            "detail_url": item["detail_url"],
+            "source_url": item["detail_url"],
+        }
+        if isinstance(item.get("raw_schedule"), str):
+            event["raw_schedule"] = item["raw_schedule"]
+        if slot_end:
+            event["end_time"] = slot_end
+        events.append(event)
+    return events
 
 
-def _build_detail_summary_fetcher(fetcher, summarizer):
-    html_to_text = HtmlToText()
+def _expand_visible_date_range(
+    *,
+    start_time: str,
+    end_time: str | None,
+    listing_text: str | None,
+) -> list[tuple[str, str | None]]:
+    start_dt = datetime.fromisoformat(start_time)
+    range_bounds = _extract_date_range_bounds(listing_text or "", reference_year=start_dt.year)
+    if range_bounds is None:
+        return [(start_time, end_time if isinstance(end_time, str) else None)]
 
-    def fetch_detail_summary(detail_url: str) -> str:
-        text, error, status = fetcher(detail_url)
-        if error or text is None:
-            logger.info(
-                "Skipping detail page summary url=%s status=%s error=%s",
-                detail_url,
-                status,
-                error,
+    range_start, range_end = range_bounds
+    end_dt = datetime.fromisoformat(end_time) if isinstance(end_time, str) else None
+    slots: list[tuple[str, str | None]] = []
+    current = range_start
+    while current <= range_end:
+        slot_start = _copy_time_to_date(start_dt, current)
+        slot_end = _copy_time_to_date(end_dt, current) if end_dt else None
+        if slot_end and slot_end <= slot_start:
+            slot_end = slot_start.replace(hour=23, minute=59, second=0, microsecond=0)
+        slots.append(
+            (
+                slot_start.isoformat(),
+                slot_end.isoformat() if slot_end else None,
             )
-            return ""
-        detail_text = html_to_text.extract(text)
-        if not detail_text:
-            return ""
-        summary_data = summarizer(detail_text, source_url=detail_url)
-        return _format_detail_summary(summary_data)
-
-    return fetch_detail_summary
+        )
+        current = current.fromordinal(current.toordinal() + 1)
+    return slots
 
 
-def _format_detail_summary(summary_data: dict) -> str:
-    parts: list[str] = []
-    summary = summary_data.get("summary")
-    if isinstance(summary, str) and summary.strip():
-        parts.append(summary.strip())
-    cost = summary_data.get("cost")
-    if isinstance(cost, str) and cost.strip():
-        parts.append(f"Cost: {cost.strip()}")
-    return "\n\n".join(parts)
+def _extract_date_range_bounds(listing_text: str, reference_year: int) -> tuple[date, date] | None:
+    import re
+
+    match = re.search(
+        r"(\d{2})\s+([A-Za-zÄÖÜäöüß\.]+)\s+bis\s+(\d{2})\s+([A-Za-zÄÖÜäöüß\.]+)",
+        listing_text,
+    )
+    if not match:
+        return None
+    start_day, start_month_name, end_day, end_month_name = match.groups()
+    start_month = _parse_german_month(start_month_name)
+    end_month = _parse_german_month(end_month_name)
+    if start_month is None or end_month is None:
+        return None
+
+    start_date = date(reference_year, start_month, int(start_day))
+    end_year = reference_year + 1 if end_month < start_month else reference_year
+    end_date = date(end_year, end_month, int(end_day))
+    return start_date, end_date
+
+
+def _parse_german_month(value: str) -> int | None:
+    normalized = value.strip().rstrip(".").upper()
+    normalized = (
+        normalized.replace("Ä", "AE")
+        .replace("Ö", "OE")
+        .replace("Ü", "UE")
+    )
+    return _MONTHS.get(normalized)
+
+
+def _copy_time_to_date(source: datetime, target_date: date) -> datetime:
+    return datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        source.hour,
+        source.minute,
+        source.second,
+        source.microsecond,
+        tzinfo=source.tzinfo,
+    )
 
 
 def _resolve_sync_limit(max_events: int | None) -> int:
@@ -257,17 +325,11 @@ def main() -> None:
             )
             return
 
-        detail_fetcher = _build_detail_summary_fetcher(
-            fetch_url_text,
-            summarize_event_detail,
-        )
-
         with Timer("persist") as t_persist:
-            enriched = enrich_with_series_cache(session, all_events, detail_fetcher, now=now)
             results = store_extracted_events(
                 session,
                 source_url=source_url,
-                extracted_events=enriched,
+                extracted_events=all_events,
                 now=now,
                 force_extract=True,
             )

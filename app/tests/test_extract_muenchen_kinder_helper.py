@@ -5,7 +5,6 @@ from app.db.base import Base
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.scripts.extract_muenchen_kinder import (
-    _build_detail_summary_fetcher,
     _resolve_sync_limit,
     extract_detail_events_from_listing,
     prepare_source_url,
@@ -143,34 +142,38 @@ def test_extract_detail_events_from_listing_respects_max_items() -> None:
     assert events[1]["title"] == "Two"
 
 
-def test_build_detail_summary_fetcher_returns_summary_with_cost() -> None:
-    fetch_calls: list[str] = []
-    summarize_calls: list[tuple[str, str]] = []
+def test_extract_detail_events_from_listing_expands_visible_date_range_into_daily_rows() -> None:
+    listing_html = """
+    <html><body>
+    <div class="card">
+      <div>03 MÄRZ bis 05 MÄRZ</div>
+      <a href="/veranstaltungen/ausstellungen/kinder/kindheit-am-nil-aegyptisches-museum">Kindheit am Nil</a>
+      <div>Di. 03.03.2026 10:00 - 20:00 Uhr</div>
+      <div class="location">Museum Ägyptischer Kunst</div>
+    </div>
+    </body></html>
+    """
 
-    def fetcher(url: str):
-        fetch_calls.append(url)
-        return (
-            "<html><body><h1>Der Gasteig brummt!</h1><p>Tickets fuer nur 3 Euro.</p></body></html>",
-            None,
-            200,
-        )
+    events = extract_detail_events_from_listing(
+        listing_html=listing_html,
+        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+    )
 
-    def summarizer(text: str, source_url: str):
-        summarize_calls.append((text, source_url))
-        return {"summary": "Musiktage fuer Kinder zum Mitmachen.", "cost": "3 Euro"}
-
-    fetch_detail_summary = _build_detail_summary_fetcher(fetcher, summarizer)
-
-    summary = fetch_detail_summary("https://www.muenchen.de/veranstaltungen/kinder/der-gasteig-brummt")
-
-    assert fetch_calls == ["https://www.muenchen.de/veranstaltungen/kinder/der-gasteig-brummt"]
-    assert summarize_calls == [
-        (
-            "Der Gasteig brummt! Tickets fuer nur 3 Euro.",
-            "https://www.muenchen.de/veranstaltungen/kinder/der-gasteig-brummt",
-        )
+    assert len(events) == 3
+    assert [event["start_time"] for event in events] == [
+        "2026-03-03T10:00:00+01:00",
+        "2026-03-04T10:00:00+01:00",
+        "2026-03-05T10:00:00+01:00",
     ]
-    assert summary == "Musiktage fuer Kinder zum Mitmachen.\n\nCost: 3 Euro"
+    assert [event["end_time"] for event in events] == [
+        "2026-03-03T20:00:00+01:00",
+        "2026-03-04T20:00:00+01:00",
+        "2026-03-05T20:00:00+01:00",
+    ]
+    assert all(
+        event["location"] == "Museum Ägyptischer Kunst"
+        for event in events
+    )
 
 
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
