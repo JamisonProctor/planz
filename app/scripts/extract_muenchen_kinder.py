@@ -28,6 +28,7 @@ from app.db.models.source_url import SourceUrl
 from app.db.models.source_url_discovery import SourceUrlDiscovery
 
 logger = logging.getLogger(__name__)
+TICKET_PREFIX = "🎟 "
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +62,46 @@ def prepare_source_url(session, url: str, domain_row) -> SourceUrl:
     session.add(source_url)
     session.flush()
     return source_url
+
+
+def extract_detail_events_from_listing(
+    *,
+    listing_html: str,
+    listing_url: str,
+    fetcher,
+    extractor,
+) -> list[dict]:
+    events: list[dict] = []
+    listing_meta = parse_listing(listing_html, listing_url)
+    for item in listing_meta:
+        detail_url = item["detail_url"]
+        address = item.get("address")
+        ticket_url = item.get("ticket_url")
+        text, error, status = fetcher(detail_url)
+        if error or text is None:
+            logger.info(
+                "Skipping detail page fetch url=%s status=%s error=%s",
+                detail_url,
+                status,
+                error,
+            )
+            continue
+
+        extracted = extractor(text, source_url=detail_url)
+        for ev in extracted:
+            ev["detail_url"] = detail_url
+            if ticket_url:
+                ev["ticket_url"] = ticket_url
+                ev["source_url"] = ticket_url
+                title = ev.get("title")
+                if isinstance(title, str) and title and not title.startswith(TICKET_PREFIX):
+                    ev["title"] = f"{TICKET_PREFIX}{title}"
+            else:
+                ev["source_url"] = detail_url
+            if address and not ev.get("location"):
+                ev["location"] = address
+        events.extend(extracted)
+    return events
 
 
 def main() -> None:
@@ -108,22 +149,16 @@ def main() -> None:
                 stats.log_status(logger)
                 run_stats.append(stats)
                 continue
-            listing_meta = parse_listing(text, page_url)
             stop_hb = start_heartbeat("extract_page", interval_s=30, logger=logger)
             with Timer("extract") as t_extract:
-                events = extract_events_from_text(text, source_url=page_url)
+                events = extract_detail_events_from_listing(
+                    listing_html=text,
+                    listing_url=page_url,
+                    fetcher=fetch_url_text,
+                    extractor=extract_events_from_text,
+                )
             stop_hb()
             stats.extract_s = t_extract.elapsed
-            for idx, ev in enumerate(events):
-                if idx < len(listing_meta):
-                    detail_url = listing_meta[idx].get("detail_url")
-                    address = listing_meta[idx].get("address")
-                    if detail_url:
-                        ev["detail_url"] = detail_url
-                        ev["source_url"] = detail_url
-                    if address:
-                        ev["location"] = address
-                ev.setdefault("source_url", page_url)
             all_events.extend(events)
             stats.events_extracted = len(events)
             stats.total_elapsed_s = stats.fetch_s + stats.extract_s

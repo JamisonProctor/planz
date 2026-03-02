@@ -207,3 +207,29 @@ def test_store_extracted_events_updates_and_marks_for_resync() -> None:
     assert refreshed.description == "new description"
     assert refreshed.google_event_id is None
     assert sync_rows == []
+
+
+def test_store_extracted_events_prefers_ticket_url_for_calendar_source() -> None:
+    session = _make_session()
+    source_url = _create_source_url(session, content_hash="hash7")
+    now = datetime.now(tz=timezone.utc)
+    start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    end = (now + timedelta(days=2, hours=1)).astimezone(timezone.utc).isoformat()
+
+    extracted = [
+        {
+            "title": "🎟 Event A",
+            "start_time": start,
+            "end_time": end,
+            "detail_url": "https://example.com/detail",
+            "ticket_url": "https://tickets.example.com/event-a",
+            "source_url": "https://tickets.example.com/event-a",
+        }
+    ]
+
+    stats = store_extracted_events(session, source_url, extracted, now=now)
+    event = session.scalars(select(Event)).one()
+
+    assert stats["created"] == 1
+    assert event.source_url == "https://tickets.example.com/event-a"
+    assert event.external_key is not None

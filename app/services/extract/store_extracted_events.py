@@ -68,8 +68,13 @@ def store_extracted_events(
                 end_time=end_time,
                 location=location,
                 description=_as_str(item.get("description")) or None,
-                source_url=item.get("detail_url") or source_url.url,
+                source_url=_event_source_url(item, source_url.url),
             )
+            for derived in derived_events:
+                if item.get("detail_url"):
+                    derived["detail_url"] = item.get("detail_url")
+                if item.get("ticket_url"):
+                    derived["ticket_url"] = item.get("ticket_url")
         else:
             derived_events = [
                 {
@@ -78,8 +83,9 @@ def store_extracted_events(
                     "end_time": end_time,
                     "location": location,
                     "description": _as_str(item.get("description")) or None,
-                    "source_url": item.get("detail_url") or source_url.url,
+                    "source_url": _event_source_url(item, source_url.url),
                     "detail_url": item.get("detail_url"),
+                    "ticket_url": item.get("ticket_url"),
                     "is_calendar_candidate": True,
                 }
             ]
@@ -114,7 +120,7 @@ def store_extracted_events(
                     end_time=derived["end_time"],
                     location=derived["location"],
                     description=derived["description"],
-                    source_url=derived.get("detail_url") or derived["source_url"],
+                    source_url=_event_source_url(derived, derived["source_url"]),
                     external_key=external_key,
                     is_calendar_candidate=derived.get("is_calendar_candidate", True),
                 )
@@ -166,6 +172,10 @@ def _build_external_key(detail_url: str, start_time: datetime) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _event_source_url(item: dict[str, Any], fallback: str) -> str:
+    return item.get("ticket_url") or item.get("source_url") or item.get("detail_url") or fallback
+
+
 def _truncate_item(item: Any, limit: int = 200) -> str:
     text = str(item)
     if len(text) > limit:
@@ -177,7 +187,7 @@ def _apply_updates(existing: Event, derived: dict[str, Any]) -> bool:
     changed = False
     for field in ["title", "start_time", "end_time", "location", "description", "source_url", "is_calendar_candidate"]:
         if field == "source_url":
-            new_val = derived.get("detail_url") or derived.get("source_url") or existing.source_url
+            new_val = _event_source_url(derived, existing.source_url or "")
         elif field in derived:
             new_val = derived[field]
         else:
