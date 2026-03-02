@@ -38,6 +38,7 @@ The system is a **multi-stage pipeline**:
    - For this source, the listing row is the canonical event record; do not use detail-page LLM extraction to invent title/date/location fields
    - For the current no-LLM validation path, `extract_muenchen_kinder` does not call the LLM and does not depend on detail-page enrichment; calendar notes rely on the stored event URL and the calendar client appends the single “More info” link
    - Visible listing date ranges like `03 MÄRZ bis 21 JUNI` must be expanded into one event row per calendar day, reusing the visible start/end times on each generated day when times are available
+   - The current muenchen.de kids listing should be parsed from `.m-event-list-item` rows: headline text/link, the `m-event-list-item__detail` `<time datetime=...>` values for the concrete occurrence, the `.m-date-range` start/end dates for the visible span, and `.m-event-list-item__meta a` for ticket URLs
    - For muenchen.de kids events, the event detail URL (not the listing URL) is the canonical source URL used for DB rows and calendar source links
    - If a muenchen.de kids listing card exposes a ticket icon/link, that ticket URL overrides the calendar/source link for the event while the detail URL remains the extraction target
    - Ticket-link events must be visually marked with a leading ticket emoji in the event title so calendar users can identify them immediately

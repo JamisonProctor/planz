@@ -108,7 +108,7 @@ def extract_detail_events_from_listing(
     for item in listing_meta:
         if max_items is not None and len(events) >= max_items:
             break
-        detail_url = item["detail_url"]
+        detail_url = item.get("detail_url")
         address = item.get("address")
         ticket_url = item.get("ticket_url")
         extracted = _structured_events_from_listing_item(item)
@@ -120,7 +120,8 @@ def extract_detail_events_from_listing(
                 break
             extracted = extracted[:remaining_slots]
         for ev in extracted:
-            ev["detail_url"] = detail_url
+            if detail_url:
+                ev["detail_url"] = detail_url
             if ticket_url:
                 ev["ticket_url"] = ticket_url
                 ev["source_url"] = ticket_url
@@ -140,20 +141,26 @@ def _structured_events_from_listing_item(item: dict) -> list[dict]:
     start_time = item.get("start_time")
     if not isinstance(title, str) or not title.strip() or not isinstance(start_time, str):
         return []
+    detail_url = item.get("detail_url")
+    ticket_url = item.get("ticket_url")
+    source_url = ticket_url or detail_url
+    if not isinstance(source_url, str) or not source_url:
+        return []
 
     events: list[dict] = []
     for slot_start, slot_end in _expand_visible_date_range(
+        item=item,
         start_time=start_time,
         end_time=item.get("end_time"),
-        listing_text=item.get("listing_text"),
     ):
         event = {
             "title": title.strip(),
             "start_time": slot_start,
             "location": item.get("location") or item.get("address"),
-            "detail_url": item["detail_url"],
-            "source_url": item["detail_url"],
+            "source_url": source_url,
         }
+        if detail_url:
+            event["detail_url"] = detail_url
         if isinstance(item.get("raw_schedule"), str):
             event["raw_schedule"] = item["raw_schedule"]
         if slot_end:
@@ -164,12 +171,12 @@ def _structured_events_from_listing_item(item: dict) -> list[dict]:
 
 def _expand_visible_date_range(
     *,
+    item: dict,
     start_time: str,
     end_time: str | None,
-    listing_text: str | None,
 ) -> list[tuple[str, str | None]]:
     start_dt = datetime.fromisoformat(start_time)
-    range_bounds = _extract_date_range_bounds(listing_text or "", reference_year=start_dt.year)
+    range_bounds = _extract_date_range_bounds(item, reference_year=start_dt.year)
     if range_bounds is None:
         return [(start_time, end_time if isinstance(end_time, str) else None)]
 
@@ -192,7 +199,13 @@ def _expand_visible_date_range(
     return slots
 
 
-def _extract_date_range_bounds(listing_text: str, reference_year: int) -> tuple[date, date] | None:
+def _extract_date_range_bounds(item: dict, reference_year: int) -> tuple[date, date] | None:
+    range_start = _parse_iso_date(item.get("range_start_date"))
+    range_end = _parse_iso_date(item.get("range_end_date"))
+    if range_start and range_end:
+        return range_start, range_end
+
+    listing_text = item.get("listing_text") or ""
     import re
 
     match = re.search(
@@ -211,6 +224,15 @@ def _extract_date_range_bounds(listing_text: str, reference_year: int) -> tuple[
     end_year = reference_year + 1 if end_month < start_month else reference_year
     end_date = date(end_year, end_month, int(end_day))
     return start_date, end_date
+
+
+def _parse_iso_date(value: object) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _parse_german_month(value: str) -> int | None:

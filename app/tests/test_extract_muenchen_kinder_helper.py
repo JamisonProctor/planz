@@ -176,6 +176,57 @@ def test_extract_detail_events_from_listing_expands_visible_date_range_into_dail
     )
 
 
+def test_extract_detail_events_from_listing_uses_ticket_only_rows_without_detail_link() -> None:
+    listing_html = """
+    <html><body>
+    <li class="m-listing__list-item">
+      <div class="m-event-list-item">
+        <div class="m-event-list-item__grid">
+          <div class="m-event-list-item__date">
+            <div class="m-date-range">
+              <time class="m-date-range__item" itemprop="startDate" datetime="2026-03-06T12:00:00Z"></time>
+              <div class="m-date-range__label"><span>bis</span></div>
+              <time class="m-date-range__item" itemprop="endDate" datetime="2026-03-06T12:00:00Z"></time>
+            </div>
+          </div>
+          <div class="m-event-list-item__body">
+            <h3 class="m-event-list-item__headline"><span>AnimaCzech: Kurzfilme aus Tschechien</span></h3>
+            <p class="m-event-list-item__detail">
+              <time datetime="06.03.2026 - 15:00:00">Fr. 06.03.2026 15:00</time>
+              -
+              <time datetime="06.03.2026 - 16:30:00">16:30 Uhr</time>
+            </p>
+            <p class="m-event-list-item__detail" itemprop="location">Gasteig HP8</p>
+          </div>
+          <div class="m-event-list-item__meta">
+            <a href="https://www.muenchenticket.de/event/grosses-kinderkino-35968/441877?campaign=muenchen">
+              <span>Tickets</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </li>
+    </body></html>
+    """
+
+    events = extract_detail_events_from_listing(
+        listing_html=listing_html,
+        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+    )
+
+    assert events == [
+        {
+            "title": "🎟 AnimaCzech: Kurzfilme aus Tschechien",
+            "start_time": "2026-03-06T15:00:00+01:00",
+            "end_time": "2026-03-06T16:30:00+01:00",
+            "raw_schedule": "Fr. 06.03.2026 15:00 - 16:30 Uhr",
+            "source_url": "https://www.muenchenticket.de/event/grosses-kinderkino-35968/441877?campaign=muenchen",
+            "ticket_url": "https://www.muenchenticket.de/event/grosses-kinderkino-35968/441877?campaign=muenchen",
+            "location": "Gasteig HP8",
+        }
+    ]
+
+
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
     assert _resolve_sync_limit(None) == 200
     assert _resolve_sync_limit(3) == 3
