@@ -57,14 +57,16 @@ The system is a **multi-stage pipeline**:
    - Produces structured `Event` rows
    - Extraction stats persisted per `SourceUrl` (status/count/error)
    - Future-only: events ending before today are discarded
-   - Multi-day events with weekends are sliced into Saturday/Sunday only (v1)
-   - Weekday inclusion may become a user preference later
+   - Multi-day events are expanded into one `Event` row per calendar day in the span
+   - For multi-day events, only Saturdays, Sundays, and Bavaria public holidays are marked as calendar candidates
+   - Non-candidate daily rows are still stored for traceability but must not sync to Google Calendar
 
 4. **Calendar Sync**  
-   - Sync only *future, unsynced* events to Google Calendar
+  - Sync only *future, unsynced* events to Google Calendar
     - Persist `CalendarSync` records for idempotency
     - Never spam calendars
-   - No grace window in production; recent-past syncing is disabled
+  - No grace window in production; recent-past syncing is disabled
+  - Rows with `is_calendar_candidate=false` are intentionally excluded from sync
 
 5. **Orchestration**
    - `run_weekly.py` executes: fetch → extract → sync

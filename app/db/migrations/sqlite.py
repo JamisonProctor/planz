@@ -26,6 +26,8 @@ def ensure_sqlite_schema(engine: Engine) -> None:
         if event_columns:
             if "external_key" not in event_columns:
                 conn.execute(text("ALTER TABLE events ADD COLUMN external_key VARCHAR(255)"))
+            if "is_calendar_candidate" not in event_columns:
+                conn.execute(text("ALTER TABLE events ADD COLUMN is_calendar_candidate BOOLEAN NOT NULL DEFAULT 1"))
             if "google_event_id" not in event_columns:
                 conn.execute(text("ALTER TABLE events ADD COLUMN google_event_id VARCHAR(255)"))
 

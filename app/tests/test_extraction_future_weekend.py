@@ -53,7 +53,7 @@ def test_past_events_are_discarded_and_marked_past_only() -> None:
     assert stats["sources_past_only"] == 1
 
 
-def test_weekend_slicing_creates_saturday_sunday_only() -> None:
+def test_multi_day_events_expand_to_daily_rows_and_only_weekends_sync() -> None:
     session = _make_session()
     _create_source(session)
     now = datetime(2026, 1, 16, 12, 0, tzinfo=timezone.utc)
@@ -69,15 +69,14 @@ def test_weekend_slicing_creates_saturday_sunday_only() -> None:
 
     stats = extract_and_store_for_sources(session, extractor=extractor, now=now)
 
-    events = session.scalars(select(Event)).all()
-    titles = {event.title for event in events}
-    assert stats["events_created_total"] == 2
-    assert len(events) == 2
-    assert "Weekend Festival (Saturday)" in titles
-    assert "Weekend Festival (Sunday)" in titles
+    events = session.scalars(select(Event).order_by(Event.start_time)).all()
+    assert stats["events_created_total"] == 3
+    assert len(events) == 3
+    assert [event.start_time.day for event in events] == [16, 17, 18]
+    assert [event.is_calendar_candidate for event in events] == [False, True, True]
 
 
-def test_multi_day_without_weekend_creates_no_events() -> None:
+def test_multi_day_without_weekend_still_creates_daily_rows() -> None:
     session = _make_session()
     _create_source(session)
     now = datetime(2026, 1, 13, 12, 0, tzinfo=timezone.utc)
@@ -93,6 +92,30 @@ def test_multi_day_without_weekend_creates_no_events() -> None:
 
     stats = extract_and_store_for_sources(session, extractor=extractor, now=now)
 
-    events = session.scalars(select(Event)).all()
-    assert len(events) == 0
-    assert stats["events_created_total"] == 0
+    events = session.scalars(select(Event).order_by(Event.start_time)).all()
+    assert len(events) == 2
+    assert stats["events_created_total"] == 2
+    assert [event.start_time.day for event in events] == [14, 15]
+    assert all(event.is_calendar_candidate is False for event in events)
+
+
+def test_multi_day_marks_public_holiday_as_calendar_candidate() -> None:
+    session = _make_session()
+    _create_source(session)
+    now = datetime(2026, 1, 4, 12, 0, tzinfo=timezone.utc)
+
+    def extractor(text: str, source_url: str):
+        return [
+            {
+                "title": "Museum Exhibition",
+                "start_time": "2026-01-05T10:00:00+01:00",  # Monday
+                "end_time": "2026-01-07T17:00:00+01:00",    # Wednesday; Jan 6 is Epiphany in Bavaria
+            }
+        ]
+
+    extract_and_store_for_sources(session, extractor=extractor, now=now)
+
+    events = session.scalars(select(Event).order_by(Event.start_time)).all()
+    assert len(events) == 3
+    assert [event.start_time.day for event in events] == [5, 6, 7]
+    assert [event.is_calendar_candidate for event in events] == [False, True, False]

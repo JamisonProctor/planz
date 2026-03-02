@@ -26,3 +26,26 @@ def test_sqlite_migration_adds_columns(tmp_path: Path) -> None:
     assert "last_extraction_count" in cols
     assert "last_extraction_status" in cols
     assert "last_extraction_error" in cols
+
+
+def test_sqlite_migration_adds_event_calendar_candidate_column(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE source_urls (id TEXT PRIMARY KEY, url TEXT, domain_id TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE events (id TEXT PRIMARY KEY, title TEXT, start_time TEXT, end_time TEXT, source_url TEXT)"
+    )
+    conn.commit()
+    conn.close()
+
+    engine = create_engine(f"sqlite:///{db_path}", future=True)
+    ensure_sqlite_schema(engine)
+    ensure_sqlite_schema(engine)
+
+    conn = sqlite3.connect(db_path)
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(events)").fetchall()]
+    conn.close()
+
+    assert "is_calendar_candidate" in cols

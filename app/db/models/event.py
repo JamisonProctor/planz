@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, String, Text, Uuid
+from sqlalchemy import Boolean, DateTime, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import UniqueConstraint
 
@@ -25,6 +25,7 @@ class Event(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_key: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    is_calendar_candidate: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     google_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.event import Event
 from app.db.models.source_url import SourceUrl
-from app.services.extract.weekend_slicer import derive_weekend_events
+from app.services.extract.weekend_slicer import derive_daily_events
 from app.db.models.calendar_sync import CalendarSync
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ def store_extracted_events(
 
         derived_events = []
         if end_time.date() > start_time.date():
-            derived_events = derive_weekend_events(
+            derived_events = derive_daily_events(
                 title=title,
                 start_time=start_time,
                 end_time=end_time,
@@ -70,14 +70,6 @@ def store_extracted_events(
                 description=_as_str(item.get("description")) or None,
                 source_url=item.get("detail_url") or source_url.url,
             )
-            if not derived_events:
-                logger.info(
-                    "Skipping multi-day event with no weekend days url=%s item=%s",
-                    source_url.url,
-                    _truncate_item(item),
-                )
-                invalid += 1
-                continue
         else:
             derived_events = [
                 {
@@ -88,6 +80,7 @@ def store_extracted_events(
                     "description": _as_str(item.get("description")) or None,
                     "source_url": item.get("detail_url") or source_url.url,
                     "detail_url": item.get("detail_url"),
+                    "is_calendar_candidate": True,
                 }
             ]
 
@@ -123,6 +116,7 @@ def store_extracted_events(
                     description=derived["description"],
                     source_url=derived.get("detail_url") or derived["source_url"],
                     external_key=external_key,
+                    is_calendar_candidate=derived.get("is_calendar_candidate", True),
                 )
                 session.add(event)
                 event_cache[external_key] = event
@@ -181,8 +175,13 @@ def _truncate_item(item: Any, limit: int = 200) -> str:
 
 def _apply_updates(existing: Event, derived: dict[str, Any]) -> bool:
     changed = False
-    for field in ["title", "start_time", "end_time", "location", "description", "source_url"]:
-        new_val = derived.get(field) or (derived.get("detail_url") if field == "source_url" else getattr(existing, field))
+    for field in ["title", "start_time", "end_time", "location", "description", "source_url", "is_calendar_candidate"]:
+        if field == "source_url":
+            new_val = derived.get("detail_url") or derived.get("source_url") or existing.source_url
+        elif field in derived:
+            new_val = derived[field]
+        else:
+            new_val = getattr(existing, field)
         if getattr(existing, field) != new_val:
             setattr(existing, field, new_val)
             changed = True

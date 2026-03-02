@@ -31,12 +31,20 @@ def sync_unsynced_events(
         .where(CalendarSync.id.is_(None))
         .where(Event.start_time < grace_cutoff)
     ) or 0
+    skipped_not_recommended = session.scalar(
+        select(func.count(Event.id))
+        .outerjoin(CalendarSync, CalendarSync.event_id == Event.id)
+        .where(CalendarSync.id.is_(None))
+        .where(Event.start_time >= grace_cutoff)
+        .where(Event.is_calendar_candidate.is_(False))
+    ) or 0
 
     stmt = (
         select(Event)
         .outerjoin(CalendarSync, CalendarSync.event_id == Event.id)
         .where(CalendarSync.id.is_(None))
         .where(Event.start_time >= grace_cutoff)
+        .where(Event.is_calendar_candidate.is_(True))
         .order_by(Event.start_time)
         .limit(limit)
     )
@@ -86,4 +94,5 @@ def sync_unsynced_events(
         "synced_count": synced,
         "skipped_already_synced": skipped_already_synced,
         "skipped_too_old": skipped_too_old,
+        "skipped_not_recommended": skipped_not_recommended,
     }

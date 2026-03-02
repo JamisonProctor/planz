@@ -188,3 +188,33 @@ def test_sync_unsynced_events_updates_existing_id() -> None:
     refreshed = session.get(Event, event.id)
     assert stats["synced_count"] == 1
     assert refreshed.google_event_id == "updated-id"
+
+
+def test_sync_unsynced_events_skips_non_candidate_events() -> None:
+    session = _make_session()
+    now = datetime.now(tz=timezone.utc)
+
+    skipped_event = Event(
+        title="Long Running Weekday",
+        start_time=now + timedelta(days=1),
+        end_time=now + timedelta(days=1, hours=8),
+        is_calendar_candidate=False,
+    )
+    included_event = Event(
+        title="Weekend Instance",
+        start_time=now + timedelta(days=2),
+        end_time=now + timedelta(days=2, hours=8),
+        is_calendar_candidate=True,
+    )
+    session.add_all([skipped_event, included_event])
+    session.commit()
+
+    client = _FakeCalendarClient(["ok-id"])
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0)
+
+    rows = session.scalars(select(CalendarSync)).all()
+    assert stats["synced_count"] == 1
+    assert stats["skipped_not_recommended"] == 1
+    assert len(rows) == 1
+    assert rows[0].event_id == included_event.id
+    assert client.calls == 1
