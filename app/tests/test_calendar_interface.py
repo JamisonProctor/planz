@@ -19,7 +19,7 @@ def test_calendar_client_interface() -> None:
         assert "http" not in (body.get("location") or "")
     assert body["extendedProperties"]["private"]["planz"] == "true"
     assert body["source"]["url"] == "https://example.com"
-    assert body["description"] == "More info: https://example.com"
+    assert body["description"] == "Click here for more information: https://example.com"
 
 
 def test_calendar_client_keeps_description_without_appending_link() -> None:
@@ -34,5 +34,5 @@ def test_calendar_client_keeps_description_without_appending_link() -> None:
         )
     )
 
-    assert body["description"] == "Real event notes\n\nMore info: https://example.com"
+    assert body["description"] == "Real event notes\n\nClick here for more information: https://example.com"
     assert body["source"]["url"] == "https://example.com"

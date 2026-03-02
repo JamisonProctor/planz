@@ -48,7 +48,7 @@ The system is a **multi-stage pipeline**:
    - Run `python -m app.scripts.migrate_db` before first use to backfill and enforce unique external keys
    - External idempotency: `external_key` (detail_url + start_time hash) enforces DB uniqueness; calendar tagging uses `extendedProperties.private.planz_key`
    - Calendar events keep clean titles; tagging via `extendedProperties.private.planz=true` (wipe uses this tag)
-   - Calendar location is plain address; the event link should be written to the Google Calendar source URL field and also appended in the description/notes field as a single “More info” link for client compatibility
+   - Calendar location is plain address; the event link should be written to the Google Calendar source URL field and also appended in the description/notes field as a single `Click here for more information: <url>` line for client compatibility
    - Calendar upserts include `extendedProperties.private.planz_key` and retry on Google `rateLimitExceeded` with backoff; wipe uses the tag to delete only PLANZ events
    - Calendar upserts must include `extendedProperties.private.planz=true`; legacy wipe may also match old muenchen.de events via `extendedProperties.private.planz_source` or Google `source.url` when `--force-legacy` is used
    - Calendar search/list calls enforce `timeMax > timeMin`; malformed windows are logged once and skipped (no crashes)
