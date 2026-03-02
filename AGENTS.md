@@ -34,7 +34,7 @@ The system is a **multi-stage pipeline**:
    - Diagnostic script: `python -m app.scripts.diagnose_source_url <url>`
    - Smoke extraction: `python -m app.scripts.extract_single_url <url> [--persist]`
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
-   - `extract_muenchen_kinder` must parse listing entries, fetch each event detail page, and extract from the detail page content rather than only the listing page
+   - `extract_muenchen_kinder` must parse listing entries, fetch each event detail page, and pass both listing-page context and detail-page content into extraction so dates/locations visible only on one side are still captured
    - For muenchen.de kids events, the event detail URL (not the listing URL) is the canonical source URL used for DB rows and calendar source links
    - If a muenchen.de kids listing card exposes a ticket icon/link, that ticket URL overrides the calendar/source link for the event while the detail URL remains the extraction target
    - Ticket-link events must be visually marked with a leading ticket emoji in the event title so calendar users can identify them immediately

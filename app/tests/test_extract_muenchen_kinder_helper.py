@@ -71,6 +71,35 @@ def test_extract_detail_events_from_listing_fetches_each_detail_page() -> None:
     ]
 
 
+def test_extract_detail_events_from_listing_passes_listing_and_detail_content_to_extractor() -> None:
+    listing_html = """
+    <html><body>
+    <div class="card">
+      <a href="/veranstaltungen/ausstellungen/kinder/kindheit-am-nil-aegyptisches-museum">Kindheit am Nil</a>
+    </div>
+    </body></html>
+    """
+    seen_texts: list[str] = []
+
+    def fetcher(url: str):
+        return ("DETAIL DATE: 7 March, Museumstrasse 1", None, 200)
+
+    def extractor(text: str, source_url: str):
+        seen_texts.append(text)
+        return [{"title": "Kindheit am Nil", "start_time": "2026-03-07T10:00:00+01:00"}]
+
+    extract_detail_events_from_listing(
+        listing_html=listing_html,
+        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+        fetcher=fetcher,
+        extractor=extractor,
+    )
+
+    assert len(seen_texts) == 1
+    assert "Kindheit am Nil" in seen_texts[0]
+    assert "DETAIL DATE: 7 March, Museumstrasse 1" in seen_texts[0]
+
+
 def test_extract_detail_events_from_listing_uses_ticket_url_and_marks_title() -> None:
     listing_html = """
     <html><body>

@@ -87,7 +87,8 @@ def extract_detail_events_from_listing(
             )
             continue
 
-        extracted = extractor(text, source_url=detail_url)
+        combined_text = _combine_listing_and_detail_text(listing_html, text)
+        extracted = extractor(combined_text, source_url=detail_url)
         for ev in extracted:
             ev["detail_url"] = detail_url
             if ticket_url:
@@ -102,6 +103,10 @@ def extract_detail_events_from_listing(
                 ev["location"] = address
         events.extend(extracted)
     return events
+
+
+def _combine_listing_and_detail_text(listing_html: str, detail_text: str) -> str:
+    return f"Listing context:\n{listing_html}\n\nDetail page:\n{detail_text}"
 
 
 def main() -> None:
