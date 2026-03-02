@@ -25,20 +25,10 @@ The system is designed to evolve into a commercial service. Decisions should fav
 
 The system is a **multi-stage pipeline**:
 
-1. **Search + Verify**  
-   - OpenAI Responses API web_search provider (via abstraction)
-   - `PLANZ_SEARCH_DEBUG=true` logs observed `web_search_call.action` shape for troubleshooting
-   - SDK responses may return typed action objects (e.g., `action.sources`), which are parsed before dict/model_dump fallbacks
-   - web_search sources can be typed objects; normalization handles dict/object/model_dump shapes
-   - DE+EN multi-query bundle (`kostenlos`/`free`, `München`/`Munich`)
-   - SearchRun/SearchQuery/SearchResult stored for provenance
-   - SourceUrl provenance recorded via SearchResult linkage
-   - Seeding is recall-first; extraction filters past events later
-   - Hard rejects only: blocked domains, fetch failed, HTTP 403/404/410, too-short content
-   - Soft signals (archive/no-date/js) are recorded in `AcquisitionIssue` but still accepted
-   - Prefer URLs with terms like `termine`/`kalender`/`veranstaltungen`/`programm`
-   - Domain blocklist for v1: Meetup/Eventbrite are blocked
-   - Caps: `PLANZ_MAX_FETCHED_PER_RUN`, `PLANZ_MAX_ACCEPTED_PER_RUN`
+1. **Source Scope**
+   - Current source focus is a single high-value listing: `https://www.muenchen.de/veranstaltungen/event/kinder`
+   - LLM-based internet search is removed for now
+   - New work should improve extraction quality, pagination, and sync reliability for this source before adding broader discovery again
    - AcquisitionIssue registry tracks uncapturable URLs and reasons
    - Playwright fallback: controlled by `PLANZ_USE_PLAYWRIGHT` and `PLANZ_PLAYWRIGHT_ALLOWLIST`
    - Diagnostic script: `python -m app.scripts.diagnose_source_url <url>`
@@ -56,7 +46,7 @@ The system is a **multi-stage pipeline**:
    - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
    - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
 
-2. **Fetch**  
+2. **Fetch**
  - Fetch raw page content for allowed SourceUrls
    - Persist fetch metadata, hashes, and excerpts
    - Never refetch unnecessarily
@@ -77,9 +67,8 @@ The system is a **multi-stage pipeline**:
    - No grace window in production; recent-past syncing is disabled
 
 5. **Orchestration**
-   - `run_weekly.py` executes: search → verify → fetch → extract → sync
+   - `run_weekly.py` executes: fetch → extract → sync
    - Designed for scheduled execution (cron / GitHub Actions later)
-   - Search can be disabled with `PLANZ_ENABLE_SEARCH=false`
 
 ---
 
@@ -210,18 +199,17 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 
 ## Manual Smoke Test
 
-1) `python -m app.scripts.search_and_seed_sources`  
-2) `python -m app.scripts.run_weekly`  
-3) `python -m app.scripts.extract_single_url https://www.muenchen.de/veranstaltungen/event/kinder`  
-3) Check calendar for `[PLZ]` events
-4) `python -m app.scripts.extract_muenchen_kinder --persist`
-5) `python -m app.scripts.calendar_wipe_planz --dry-run --days 120` (only deletes `[PLZ]`/planz-marked)
+1) Ensure `https://www.muenchen.de/veranstaltungen/event/kinder` exists as an allowed `SourceUrl` in the local DB
+2) `python -m app.scripts.run_weekly`
+3) `python -m app.scripts.extract_single_url https://www.muenchen.de/veranstaltungen/event/kinder`
+4) Check calendar for `[PLZ]` events
+5) `python -m app.scripts.extract_muenchen_kinder --persist`
+6) `python -m app.scripts.calendar_wipe_planz --dry-run --days 120` (only deletes `[PLZ]`/planz-marked)
 
 ---
 
 ## Last Run Outcome Checklist
 
-- Search seeded new URLs (accepted > 0)
 - Fetch produced ok content (fetched_ok > 0)
 - Extraction created events (events_created_total > 0)
 - Sync created calendar events (events_synced > 0)

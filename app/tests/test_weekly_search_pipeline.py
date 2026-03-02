@@ -13,15 +13,11 @@ def _make_session():
     return sessionmaker(bind=engine, future=True)()
 
 
-def test_weekly_pipeline_runs_search_and_stages(monkeypatch):
+def test_weekly_pipeline_runs_fetch_extract_and_sync_stages():
     session = _make_session()
     now = datetime.now(tz=timezone.utc)
 
-    called = {"search": 0, "fetch": 0, "extract": 0, "sync": 0}
-
-    def search_runner(*args, **kwargs):
-        called["search"] += 1
-        return {"accepted": 1}
+    called = {"fetch": 0, "extract": 0, "sync": 0}
 
     def fetch_runner():
         called["fetch"] += 1
@@ -44,17 +40,13 @@ def test_weekly_pipeline_runs_search_and_stages(monkeypatch):
         called["sync"] += 1
         return {"synced_count": 0, "skipped_already_synced": 0, "skipped_too_old": 0}
 
-    monkeypatch.setenv("PLANZ_ENABLE_SEARCH", "true")
-
     run_weekly_pipeline(
         session=session,
         now=now,
-        search_runner=search_runner,
-        search_provider_factory=None,
         fetch_runner=fetch_runner,
         extract_runner=extract_runner,
         sync_runner=sync_runner,
         calendar_client_factory=None,
     )
 
-    assert called == {"search": 1, "fetch": 1, "extract": 1, "sync": 1}
+    assert called == {"fetch": 1, "extract": 1, "sync": 1}

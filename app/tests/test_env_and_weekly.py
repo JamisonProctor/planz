@@ -22,7 +22,6 @@ def test_load_env_does_not_fail_when_missing() -> None:
 
 def test_run_weekly_reports_no_sources(monkeypatch, capsys) -> None:
     session = _make_session()
-    monkeypatch.setenv("PLANZ_ENABLE_SEARCH", "false")
 
     def fetch_runner():
         return {"fetched_ok": 0, "fetched_error": 0}
@@ -42,31 +41,10 @@ def test_run_weekly_reports_no_sources(monkeypatch, capsys) -> None:
     def sync_runner(*args, **kwargs):
         return 0
 
-    def search_runner(**kwargs):
-        return {
-            "queries_executed": 0,
-            "total_results": 0,
-            "unique_candidates": 0,
-            "accepted": 0,
-            "rejected": {
-                "blocked_domain": 0,
-                "http_blocked": 0,
-                "fetch_failed": 0,
-                "too_short": 0,
-            },
-            "accepted_soft_signals": {
-                "archive_signals": 0,
-                "no_date_tokens": 0,
-                "js_suspected": 0,
-            },
-            "caps_hit": {"accepted": False, "fetched": False},
-        }
-
     run_weekly_pipeline(
         session=session,
         now=datetime.now(tz=timezone.utc),
         fetch_runner=fetch_runner,
-        search_runner=search_runner,
         extract_runner=extract_runner,
         sync_runner=sync_runner,
         calendar_client_factory=None,
@@ -94,7 +72,6 @@ def test_run_weekly_reports_missing_openai_key_when_needed(monkeypatch, capsys) 
     session.commit()
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("PLANZ_ENABLE_SEARCH", "false")
 
     def fetch_runner():
         return {"fetched_ok": 0, "fetched_error": 0}
@@ -105,31 +82,10 @@ def test_run_weekly_reports_missing_openai_key_when_needed(monkeypatch, capsys) 
     def sync_runner(*args, **kwargs):
         return 0
 
-    def search_runner(**kwargs):
-        return {
-            "queries_executed": 0,
-            "total_results": 0,
-            "unique_candidates": 0,
-            "accepted": 0,
-            "rejected": {
-                "blocked_domain": 0,
-                "http_blocked": 0,
-                "fetch_failed": 0,
-                "too_short": 0,
-            },
-            "accepted_soft_signals": {
-                "archive_signals": 0,
-                "no_date_tokens": 0,
-                "js_suspected": 0,
-            },
-            "caps_hit": {"accepted": False, "fetched": False},
-        }
-
     run_weekly_pipeline(
         session=session,
         now=datetime.now(tz=timezone.utc),
         fetch_runner=fetch_runner,
-        search_runner=search_runner,
         extract_runner=extract_runner,
         sync_runner=sync_runner,
         calendar_client_factory=None,
@@ -174,14 +130,10 @@ def test_extraction_skip_reason_unchanged_hash_reported(monkeypatch, capsys) -> 
     def sync_runner(*args, **kwargs):
         return 0
 
-    def search_runner(**kwargs):
-        return {"queries_executed": 0, "total_results": 0, "unique_candidates": 0, "accepted": 0, "rejected": {"blocked_domain": 0, "fetch_failed": 0, "too_short": 0, "no_date_tokens": 0, "archive_signals": 0}}
-
     run_weekly_pipeline(
         session=session,
         now=datetime.now(tz=timezone.utc),
         fetch_runner=fetch_runner,
-        search_runner=search_runner,
         extract_runner=extract_runner,
         sync_runner=sync_runner,
         calendar_client_factory=None,
@@ -189,4 +141,3 @@ def test_extraction_skip_reason_unchanged_hash_reported(monkeypatch, capsys) -> 
 
     captured = capsys.readouterr().out
     assert "Extraction skipped: all content hashes unchanged" in captured
-    monkeypatch.setenv("PLANZ_ENABLE_SEARCH", "false")

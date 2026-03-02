@@ -1,6 +1,6 @@
 # PLANZ — LLM-Powered Local Events to Calendar (Prototype)
 
-PLANZ is a product prototype that discovers local events from trusted sources and syncs them into a user’s calendar. It uses an LLM-powered extraction pipeline to turn messy web pages into structured event data, then publishes the results to Google Calendar.
+PLANZ is a product prototype that fetches a high-value local event listing and syncs the extracted events into a user’s calendar. It uses an LLM-powered extraction pipeline to turn messy web pages into structured event data, then publishes the results to Google Calendar.
 
 The intent is to validate an end-to-end user outcome quickly: **useful, future events showing up in a calendar with correct time and location**, without manual copy/paste.
 
@@ -20,7 +20,7 @@ Local event discovery is fragmented:
 
 ## What It Does
 
-- Ingests event listing pages (starting with high-quality Munich sources)
+- Ingests the Munich kids listing at `https://www.muenchen.de/veranstaltungen/event/kinder`
 - Fetches and parses content
 - Uses an LLM to extract structured event candidates
 - Filters out obvious non-actionable results (e.g., past-only)
@@ -66,7 +66,7 @@ Tests are included for core behaviors, and ongoing development is intended to st
 - **Reliability & observability:** clean progress logs, better error surfacing, run-time tracking, safe debug modes  
 - **Idempotency & dedupe:** stable event identity and calendar upserts without duplicates  
 - **Enrichment:** optional detail-page fetches for better address/description when it materially improves quality  
-- **Source expansion:** additional Munich sources, German/English coverage, source-quality tracking
+- **Source quality:** improve extraction quality and pagination coverage for the existing Munich listing before broader source expansion
 
 ---
 

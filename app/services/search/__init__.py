@@ -1,1 +1,1 @@
-"""Search providers and query utilities."""
+"""Acquisition issue helpers kept for source diagnostics."""
