@@ -38,6 +38,7 @@ def test_parse_listing_extracts_detail_and_address():
     events = parse_listing(HTML, base_url="https://www.muenchen.de/veranstaltungen/event/kinder")
     assert events[0]["detail_url"] == "https://www.muenchen.de/veranstaltungen/event/123"
     assert events[0]["address"] == "Marienplatz 1"
+    assert "Event 1" in events[0]["listing_text"]
     assert events[1]["detail_url"] == "https://www.muenchen.de/veranstaltungen/event/456"
     assert events[1]["address"] is None
 
@@ -52,6 +53,7 @@ def test_parse_listing_includes_nested_event_paths_and_skips_pagination() -> Non
         {
             "detail_url": "https://www.muenchen.de/veranstaltungen/ausstellungen/kinder/kindheit-am-nil-aegyptisches-museum",
             "address": "Museum",
+            "listing_text": "Kindheit am Nil Museum",
         }
     ]
 
@@ -66,6 +68,7 @@ def test_parse_listing_extracts_ticket_link_from_card() -> None:
         {
             "detail_url": "https://www.muenchen.de/veranstaltungen/ausstellungen/kinder/kindheit-am-nil-aegyptisches-museum",
             "address": "Museum",
+            "listing_text": "Kindheit am Nil Buy Museum",
             "ticket_url": "https://tickets.example.com/kindheit-am-nil",
         }
     ]

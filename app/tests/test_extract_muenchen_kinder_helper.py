@@ -77,6 +77,9 @@ def test_extract_detail_events_from_listing_passes_listing_and_detail_content_to
     <div class="card">
       <a href="/veranstaltungen/ausstellungen/kinder/kindheit-am-nil-aegyptisches-museum">Kindheit am Nil</a>
     </div>
+    <div class="card">
+      <a href="/not-an-event">Other Event</a>
+    </div>
     </body></html>
     """
     seen_texts: list[str] = []
@@ -98,6 +101,7 @@ def test_extract_detail_events_from_listing_passes_listing_and_detail_content_to
     assert len(seen_texts) == 1
     assert "Kindheit am Nil" in seen_texts[0]
     assert "DETAIL DATE: 7 March, Museumstrasse 1" in seen_texts[0]
+    assert "Other Event" not in seen_texts[0]
 
 
 def test_extract_detail_events_from_listing_uses_ticket_url_and_marks_title() -> None:

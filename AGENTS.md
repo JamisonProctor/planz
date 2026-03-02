@@ -34,7 +34,8 @@ The system is a **multi-stage pipeline**:
    - Diagnostic script: `python -m app.scripts.diagnose_source_url <url>`
    - Smoke extraction: `python -m app.scripts.extract_single_url <url> [--persist]`
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
-   - `extract_muenchen_kinder` must parse listing entries, fetch each event detail page, and pass both listing-page context and detail-page content into extraction so dates/locations visible only on one side are still captured
+   - `extract_muenchen_kinder` must parse listing entries, fetch each event detail page, and pass both the matching listing-card snippet and detail-page content into extraction so dates/locations visible only on one side are still captured
+   - Do not pass the full multi-event listing page into each per-event LLM extraction call; use only per-card context to avoid context-length blowups
    - For muenchen.de kids events, the event detail URL (not the listing URL) is the canonical source URL used for DB rows and calendar source links
    - If a muenchen.de kids listing card exposes a ticket icon/link, that ticket URL overrides the calendar/source link for the event while the detail URL remains the extraction target
    - Ticket-link events must be visually marked with a leading ticket emoji in the event title so calendar users can identify them immediately
@@ -50,6 +51,7 @@ The system is a **multi-stage pipeline**:
    - Event idempotency: deterministic `external_key`/event_key derived from detail_url+start_time; store updates existing rows (no duplicates); content changes clear sync markers to trigger re-sync
    - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
    - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
+   - `extract_muenchen_kinder` supports `--sync-days <N>` to limit calendar sync to events starting within the next `N` days for controlled validation runs
 
 2. **Fetch**
  - Fetch raw page content for allowed SourceUrls

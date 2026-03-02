@@ -25,11 +25,17 @@ def parse_listing(html: str, base_url: str) -> list[dict[str, Any]]:
             continue
         card = link.find_parent()
         address = None
+        listing_text = None
         if card:
             addr_el = card.find(class_="address") or card.find(class_="location")
             if addr_el and addr_el.get_text(strip=True):
                 address = addr_el.get_text(strip=True)
+            text = card.get_text(" ", strip=True)
+            if text:
+                listing_text = text
         event: dict[str, Any] = {"detail_url": detail_url, "address": address}
+        if listing_text:
+            event["listing_text"] = listing_text
         ticket_url = _extract_ticket_url(card, base_url, detail_url) if card else None
         if ticket_url:
             event["ticket_url"] = ticket_url

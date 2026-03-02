@@ -18,8 +18,10 @@ def sync_unsynced_events(
     now: datetime,
     limit: int = 50,
     grace_hours: int = 0,
+    max_days: int | None = None,
 ) -> dict[str, int]:
     grace_cutoff = now - timedelta(hours=grace_hours)
+    max_cutoff = (now + timedelta(days=max_days)) if max_days is not None else None
     skipped_already_synced = session.scalar(
         select(func.count(Event.id))
         .join(CalendarSync, CalendarSync.event_id == Event.id)
@@ -38,6 +40,16 @@ def sync_unsynced_events(
         .where(Event.start_time >= grace_cutoff)
         .where(Event.is_calendar_candidate.is_(False))
     ) or 0
+    skipped_beyond_window = 0
+    if max_cutoff is not None:
+        skipped_beyond_window = session.scalar(
+            select(func.count(Event.id))
+            .outerjoin(CalendarSync, CalendarSync.event_id == Event.id)
+            .where(CalendarSync.id.is_(None))
+            .where(Event.start_time >= grace_cutoff)
+            .where(Event.start_time > max_cutoff)
+            .where(Event.is_calendar_candidate.is_(True))
+        ) or 0
 
     stmt = (
         select(Event)
@@ -48,6 +60,8 @@ def sync_unsynced_events(
         .order_by(Event.start_time)
         .limit(limit)
     )
+    if max_cutoff is not None:
+        stmt = stmt.where(Event.start_time <= max_cutoff)
     events = session.scalars(stmt).all()
 
     synced = 0
@@ -95,4 +109,5 @@ def sync_unsynced_events(
         "skipped_already_synced": skipped_already_synced,
         "skipped_too_old": skipped_too_old,
         "skipped_not_recommended": skipped_not_recommended,
+        "skipped_beyond_window": skipped_beyond_window,
     }

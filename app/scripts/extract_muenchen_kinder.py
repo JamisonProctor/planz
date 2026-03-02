@@ -37,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--persist", action="store_true", help="Persist events to DB")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument(
+        "--sync-days",
+        type=int,
+        default=None,
+        help="Only sync events starting within this many days from now",
+    )
+    parser.add_argument(
         "--no-sync",
         action="store_true",
         help="Skip calendar sync (for dry runs or data-only refresh)",
@@ -77,6 +83,7 @@ def extract_detail_events_from_listing(
         detail_url = item["detail_url"]
         address = item.get("address")
         ticket_url = item.get("ticket_url")
+        listing_text = item.get("listing_text") or ""
         text, error, status = fetcher(detail_url)
         if error or text is None:
             logger.info(
@@ -87,7 +94,7 @@ def extract_detail_events_from_listing(
             )
             continue
 
-        combined_text = _combine_listing_and_detail_text(listing_html, text)
+        combined_text = _combine_listing_and_detail_text(listing_text, text)
         extracted = extractor(combined_text, source_url=detail_url)
         for ev in extracted:
             ev["detail_url"] = detail_url
@@ -105,8 +112,10 @@ def extract_detail_events_from_listing(
     return events
 
 
-def _combine_listing_and_detail_text(listing_html: str, detail_text: str) -> str:
-    return f"Listing context:\n{listing_html}\n\nDetail page:\n{detail_text}"
+def _combine_listing_and_detail_text(listing_text: str, detail_text: str) -> str:
+    if listing_text:
+        return f"Listing context:\n{listing_text}\n\nDetail page:\n{detail_text}"
+    return f"Detail page:\n{detail_text}"
 
 
 def main() -> None:
@@ -210,7 +219,14 @@ def main() -> None:
         if not args.no_sync:
             client = GoogleCalendarClient(calendar_id=settings.GOOGLE_CALENDAR_ID)
             with t_sync:
-                sync_stats = sync_unsynced_events(session, client, now=now, limit=200, grace_hours=0)
+                sync_stats = sync_unsynced_events(
+                    session,
+                    client,
+                    now=now,
+                    limit=200,
+                    grace_hours=0,
+                    max_days=args.sync_days,
+                )
 
         overall_timer.__exit__(None, None, None)
         totals = RunStats.combine(run_stats)

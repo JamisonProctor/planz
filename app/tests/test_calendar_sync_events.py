@@ -218,3 +218,31 @@ def test_sync_unsynced_events_skips_non_candidate_events() -> None:
     assert len(rows) == 1
     assert rows[0].event_id == included_event.id
     assert client.calls == 1
+
+
+def test_sync_unsynced_events_respects_max_days_window() -> None:
+    session = _make_session()
+    now = datetime.now(tz=timezone.utc)
+
+    in_window = Event(
+        title="Soon",
+        start_time=now + timedelta(days=7),
+        end_time=now + timedelta(days=7, hours=1),
+    )
+    out_of_window = Event(
+        title="Later",
+        start_time=now + timedelta(days=21),
+        end_time=now + timedelta(days=21, hours=1),
+    )
+    session.add_all([in_window, out_of_window])
+    session.commit()
+
+    client = _FakeCalendarClient(["ok-id"])
+    stats = sync_unsynced_events(session, client, now=now, grace_hours=0, max_days=14)
+
+    rows = session.scalars(select(CalendarSync)).all()
+    assert stats["synced_count"] == 1
+    assert stats["skipped_beyond_window"] == 1
+    assert len(rows) == 1
+    assert rows[0].event_id == in_window.id
+    assert client.calls == 1
