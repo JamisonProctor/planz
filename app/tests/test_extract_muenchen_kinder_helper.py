@@ -187,3 +187,33 @@ def test_extract_detail_events_from_listing_respects_max_items() -> None:
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
     assert _resolve_sync_limit(None) == 200
     assert _resolve_sync_limit(3) == 3
+
+
+def test_extract_detail_events_from_listing_skips_llm_fallback_in_debug_mode() -> None:
+    listing_html = """
+    <html><body>
+    <div class="card">
+      <a href="/veranstaltungen/ausstellungen/kinder/one">One</a>
+    </div>
+    </body></html>
+    """
+    fetch_calls: list[str] = []
+
+    def fetcher(url: str):
+        fetch_calls.append(url)
+        return ("detail content", None, 200)
+
+    def extractor(text: str, source_url: str):
+        raise AssertionError("debug mode should not call extractor")
+
+    events = extract_detail_events_from_listing(
+        listing_html=listing_html,
+        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+        fetcher=fetcher,
+        extractor=extractor,
+        max_items=2,
+        allow_llm_fallback=False,
+    )
+
+    assert events == []
+    assert fetch_calls == []

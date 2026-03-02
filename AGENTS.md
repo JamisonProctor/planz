@@ -55,6 +55,7 @@ The system is a **multi-stage pipeline**:
    - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
    - `extract_muenchen_kinder` supports `--sync-days <N>` to limit calendar sync to events starting within the next `N` days for controlled validation runs
    - `extract_muenchen_kinder` supports `--max-events <N>` to cap how many listing entries are processed for fast debug runs
+   - In `extract_muenchen_kinder` debug runs (`--max-events`), disable LLM fallback and use only structured listing rows so manual checks complete quickly
 
 2. **Fetch**
  - Fetch raw page content for allowed SourceUrls
@@ -63,6 +64,7 @@ The system is a **multi-stage pipeline**:
 
 3. **Extraction**  
    - LLM-based extraction of IRL events from fetched content
+   - When the LLM is used for extraction, keep reasoning effort at the lowest supported setting to minimize latency and token overhead
    - Idempotent via content hash comparison
    - Produces structured `Event` rows
    - Extraction stats persisted per `SourceUrl` (status/count/error)

@@ -83,6 +83,7 @@ def extract_detail_events_from_listing(
     fetcher,
     extractor,
     max_items: int | None = None,
+    allow_llm_fallback: bool = True,
 ) -> list[dict]:
     events: list[dict] = []
     listing_meta = parse_listing(listing_html, listing_url)
@@ -94,7 +95,7 @@ def extract_detail_events_from_listing(
         ticket_url = item.get("ticket_url")
         listing_text = item.get("listing_text") or ""
         extracted = _structured_events_from_listing_item(item)
-        if not extracted:
+        if not extracted and allow_llm_fallback:
             text, error, status = fetcher(detail_url)
             if error or text is None:
                 logger.info(
@@ -216,6 +217,7 @@ def main() -> None:
                     fetcher=fetch_url_text,
                     extractor=extract_events_from_text,
                     max_items=remaining_events,
+                    allow_llm_fallback=args.max_events is None,
                 )
             stop_hb()
             stats.extract_s = t_extract.elapsed
