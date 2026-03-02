@@ -53,7 +53,7 @@ The system is a **multi-stage pipeline**:
    - Calendar upserts must include `extendedProperties.private.planz=true`; legacy wipe may also match old muenchen.de events via `extendedProperties.private.planz_source` or Google `source.url` when `--force-legacy` is used
    - Calendar search/list calls enforce `timeMax > timeMin`; malformed windows are logged once and skipped (no crashes)
    - Event idempotency: deterministic `external_key`/event_key derived from detail_url+start_time; store updates existing rows (no duplicates); content changes clear sync markers to trigger re-sync
-   - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
+   - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG, and stopping a heartbeat must not block the pipeline while waiting for the interval sleep to expire; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
    - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
    - `extract_muenchen_kinder` supports `--sync-days <N>` to limit calendar sync to events starting within the next `N` days for controlled validation runs
    - `extract_muenchen_kinder` supports `--max-events <N>` to cap how many listing entries are processed for fast debug runs
