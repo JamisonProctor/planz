@@ -6,10 +6,23 @@ import random
 import time
 from typing import Any, List
 
+from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.core.env import load_env
+from app.db.models.calendar_sync import CalendarSync
+from app.db.models.event import Event
+from app.db.session import engine, get_session
+from app.db.migrations.sqlite import ensure_sqlite_schema
 from app.logging import configure_logging
 from app.services.calendar.google_calendar_service import GoogleCalendarClient
+
+
+def reset_sync_state(session: Session) -> None:
+    """Clear all CalendarSync records and google_event_id fields for a clean-slate debug run."""
+    session.query(CalendarSync).delete()
+    session.query(Event).update({Event.google_event_id: None})
+    session.commit()
 
 
 def is_planz_event(event: dict[str, Any], force_legacy: bool = False) -> bool:
@@ -91,14 +104,27 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Do not delete, only list")
     parser.add_argument("--force-legacy", action="store_true", help="Also delete legacy [PLZ] prefix events without tag")
     parser.add_argument("--sleep-ms", type=int, default=200, help="Sleep between deletions to reduce rate limits")
+    parser.add_argument("--reset-sync", action="store_true", help="Also clear CalendarSync records and google_event_id from DB for a clean-slate debug run")
     args = parser.parse_args()
 
     load_env()
     configure_logging()
+    ensure_sqlite_schema(engine)
     client = GoogleCalendarClient(calendar_id=settings.GOOGLE_CALENDAR_ID)
     if args.sleep_ms > 0:
         time.sleep(args.sleep_ms / 1000)
     wipe_planz_events(client, days=args.days, dry_run=args.dry_run, force_legacy=args.force_legacy)
+    if args.reset_sync:
+        session_gen = get_session()
+        session = next(session_gen)
+        try:
+            reset_sync_state(session)
+            print("DB sync state reset: CalendarSync records cleared, google_event_id nulled.")
+        finally:
+            try:
+                next(session_gen)
+            except StopIteration:
+                pass
 
 
 if __name__ == "__main__":
