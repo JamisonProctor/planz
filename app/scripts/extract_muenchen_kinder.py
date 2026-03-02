@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.db.models.source_domain import get_or_create_domain
 from app.db.models.source_url import SourceUrl
-from app.services.extract.weekend_slicer import _is_recommendation_day
+from app.services.extract.weekend_slicer import classify_event_time
 
 logger = logging.getLogger(__name__)
 TICKET_PREFIX = "🎟 "
@@ -188,11 +188,12 @@ def _expand_visible_date_range(
         slot_end = _copy_time_to_date(end_dt, current) if end_dt else None
         if slot_end and slot_end <= slot_start:
             slot_end = slot_start.replace(hour=23, minute=59, second=0, microsecond=0)
+        is_candidate, effective_start = classify_event_time(current, slot_start, slot_end)
         slots.append(
             (
-                slot_start.isoformat(),
+                effective_start.isoformat(),
                 slot_end.isoformat() if slot_end else None,
-                _is_recommendation_day(current),
+                is_candidate,
             )
         )
         current = current.fromordinal(current.toordinal() + 1)

@@ -162,10 +162,11 @@ def test_extract_detail_events_from_listing_expands_visible_date_range_into_dail
     )
 
     assert len(events) == 3
+    # Tue-Thu events ending at 20:00 qualify via time rule; start is adjusted to 16:00
     assert [event["start_time"] for event in events] == [
-        "2026-03-03T10:00:00+01:00",
-        "2026-03-04T10:00:00+01:00",
-        "2026-03-05T10:00:00+01:00",
+        "2026-03-03T16:00:00+01:00",
+        "2026-03-04T16:00:00+01:00",
+        "2026-03-05T16:00:00+01:00",
     ]
     assert [event["end_time"] for event in events] == [
         "2026-03-03T20:00:00+01:00",
@@ -231,13 +232,13 @@ def test_extract_detail_events_from_listing_uses_ticket_only_rows_without_detail
 
 
 def test_extract_detail_events_date_range_marks_weekdays_as_non_candidates() -> None:
-    """Range-expanded events must set is_calendar_candidate based on weekend/holiday rules."""
+    """Range-expanded morning-only events on weekdays must not be calendar candidates."""
     listing_html = """
     <html><body>
     <div class="card">
       <div>05 MÄRZ bis 09 MÄRZ</div>
       <a href="/veranstaltungen/ausstellungen/kinder/some-event">Some Exhibition</a>
-      <div>Do. 05.03.2026 10:00 - 17:00 Uhr</div>
+      <div>Do. 05.03.2026 10:00 - 12:00 Uhr</div>
       <div class="location">Museum</div>
     </div>
     </body></html>

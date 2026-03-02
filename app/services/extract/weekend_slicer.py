@@ -49,6 +49,49 @@ def derive_daily_events(
     return derived
 
 
+FRIDAY = 4
+MON_THU = {0, 1, 2, 3}
+_WEEKDAY_THRESHOLD = 16  # 16:00
+_WEEKDAY_EXTENDED = 17   # events must end >= 17:00 to qualify via extension
+_FRIDAY_THRESHOLD = 12   # 12:00
+_FRIDAY_EXTENDED = 13    # events must end >= 13:00 to qualify via extension
+
+
+def classify_event_time(
+    day: date,
+    slot_start: datetime,
+    slot_end: datetime | None,
+) -> tuple[bool, datetime]:
+    """Return (is_candidate, effective_start).
+
+    Weekend/holiday days are always candidates with no adjustment.
+    Mon-Thu: candidate if start >= 16:00, or if end >= 17:00 (start adjusted to 16:00).
+    Friday: candidate if start >= 12:00, or if end >= 13:00 (start adjusted to 12:00).
+    When slot_end is None, effective end is assumed to be slot_start + 2 hours.
+    """
+    if _is_recommendation_day(day):
+        return True, slot_start
+
+    effective_end = slot_end if slot_end is not None else slot_start + timedelta(hours=2)
+
+    weekday = day.weekday()
+    if weekday == FRIDAY:
+        threshold = _FRIDAY_THRESHOLD
+        extended = _FRIDAY_EXTENDED
+    else:
+        threshold = _WEEKDAY_THRESHOLD
+        extended = _WEEKDAY_EXTENDED
+
+    if slot_start.hour >= threshold or (slot_start.hour == threshold and slot_start.minute > 0):
+        return True, slot_start
+
+    if effective_end.hour > extended or (effective_end.hour == extended and effective_end.minute >= 0):
+        adjusted_start = slot_start.replace(hour=threshold, minute=0, second=0, microsecond=0)
+        return True, adjusted_start
+
+    return False, slot_start
+
+
 def _is_recommendation_day(day: date) -> bool:
     if day.weekday() in WEEKEND_DAYS:
         return True
