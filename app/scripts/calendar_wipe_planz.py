@@ -22,11 +22,17 @@ def is_planz_event(event: dict[str, Any], force_legacy: bool = False) -> bool:
     summary = (event.get("summary") or "").lower()
     description = (event.get("description") or "").lower()
     url = (event.get("htmlLink") or "").lower()
+    source_url = ((event.get("source") or {}).get("url") or "").lower()
+    planz_source = str(private.get("planz_source", "")).lower()
     if summary.startswith("[plz]"):
         return True
     if "planz" in description:
         return True
     if "utm_source=openai" in url or "utm_source=openai" in description:
+        return True
+    if "muenchen.de" in planz_source:
+        return True
+    if "muenchen.de" in source_url:
         return True
     return False
 

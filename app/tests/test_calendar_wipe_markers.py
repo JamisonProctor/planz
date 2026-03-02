@@ -99,3 +99,20 @@ def test_wipe_counts_failures(monkeypatch):
 def test_is_planz_event_force_legacy() -> None:
     event = {"summary": "[PLZ] Old"}
     assert is_planz_event(event, force_legacy=True) is True
+
+
+def test_is_planz_event_matches_planz_source_flag() -> None:
+    event = {
+        "summary": "Kids",
+        "extendedProperties": {"private": {"planz_source": "muenchen.de"}},
+    }
+    assert is_planz_event(event, force_legacy=True) is True
+
+
+def test_is_planz_event_matches_source_url_domain_for_legacy_cleanup() -> None:
+    event = {
+        "summary": "Kids",
+        "source": {"url": "https://www.muenchen.de/veranstaltungen/ausstellungen/kinder/example"},
+    }
+    assert is_planz_event(event) is False
+    assert is_planz_event(event, force_legacy=True) is True

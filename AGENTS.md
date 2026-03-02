@@ -45,6 +45,7 @@ The system is a **multi-stage pipeline**:
    - Calendar events keep clean titles; tagging via `extendedProperties.private.planz=true` (wipe uses this tag)
    - Calendar location is plain address; source points to detail page; description includes single “More info” link
    - Calendar upserts include `extendedProperties.private.planz_key` and retry on Google `rateLimitExceeded` with backoff; wipe uses the tag to delete only PLANZ events
+   - Calendar upserts must include `extendedProperties.private.planz=true`; legacy wipe may also match old muenchen.de events via `extendedProperties.private.planz_source` or Google `source.url` when `--force-legacy` is used
    - Calendar search/list calls enforce `timeMax > timeMin`; malformed windows are logged once and skipped (no crashes)
    - Event idempotency: deterministic `external_key`/event_key derived from detail_url+start_time; store updates existing rows (no duplicates); content changes clear sync markers to trigger re-sync
    - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
