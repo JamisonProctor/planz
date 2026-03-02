@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.urls import extract_domain
 from app.db.models.event_series import EventSeries
+from app.services.extract.html_to_text import HtmlToText
 
 
 def _series_key(item: dict[str, Any]) -> str:
@@ -28,6 +29,7 @@ def enrich_with_series_cache(
 ) -> list[dict[str, Any]]:
     enriched: list[dict[str, Any]] = []
     cache: dict[str, EventSeries] = {}
+    html_to_text = HtmlToText()
 
     for item in events:
         key = _series_key(item)
@@ -39,7 +41,7 @@ def enrich_with_series_cache(
                 description = None
                 detail_url = item.get("detail_url")
                 if detail_url:
-                    description = detail_fetcher(detail_url)
+                    description = html_to_text.extract(detail_fetcher(detail_url))
                 series = EventSeries(
                     series_key=key,
                     detail_url=item.get("detail_url"),

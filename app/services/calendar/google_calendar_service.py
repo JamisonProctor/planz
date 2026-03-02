@@ -135,12 +135,9 @@ class GoogleCalendarClient(CalendarClient):
     @staticmethod
     def _build_event_body(calendar_event: CalendarEvent) -> dict[str, Any]:
         summary = calendar_event.title
-
-        description_parts = []
+        description_parts: list[str] = []
         if calendar_event.description:
             description_parts.append(calendar_event.description)
-        else:
-            description_parts.append(summary)
         if calendar_event.source_url:
             description_parts.append(f"More info: {calendar_event.source_url}")
 

@@ -19,3 +19,20 @@ def test_calendar_client_interface() -> None:
         assert "http" not in (body.get("location") or "")
     assert body["extendedProperties"]["private"]["planz"] == "true"
     assert body["source"]["url"] == "https://example.com"
+    assert body["description"] == "More info: https://example.com"
+
+
+def test_calendar_client_keeps_description_without_appending_link() -> None:
+    body = GoogleCalendarClient._build_event_body(
+        CalendarEvent(
+            title="Test",
+            start="2024-01-01T00:00:00Z",
+            end="2024-01-01T01:00:00Z",
+            location=None,
+            description="Real event notes",
+            source_url="https://example.com",
+        )
+    )
+
+    assert body["description"] == "Real event notes\n\nMore info: https://example.com"
+    assert body["source"]["url"] == "https://example.com"

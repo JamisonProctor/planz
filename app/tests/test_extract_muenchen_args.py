@@ -12,9 +12,16 @@ def test_extract_muenchen_parser_defaults() -> None:
     args = parser.parse_args([])
     assert args.no_sync is False
     assert args.sync_days is None
+    assert args.max_events is None
 
 
 def test_extract_muenchen_parser_accepts_sync_days() -> None:
     parser = build_parser()
     args = parser.parse_args(["--sync-days", "14"])
     assert args.sync_days == 14
+
+
+def test_extract_muenchen_parser_accepts_max_events() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["--max-events", "3"])
+    assert args.max_events == 3

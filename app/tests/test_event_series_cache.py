@@ -36,3 +36,23 @@ def test_enrich_with_series_cache_fetches_once() -> None:
     cached = session.scalar(select(EventSeries))
     assert cached is not None
     assert cached.detail_url == "https://example.com/detail"
+
+
+def test_enrich_with_series_cache_strips_html_from_detail_description() -> None:
+    session = _make_session()
+
+    def fetch_detail(detail_url: str) -> str:
+        return "<html><body><h1>Show</h1><p>Family friendly fun.</p></body></html>"
+
+    events = [
+        {
+            "title": "Show",
+            "location": "Hall",
+            "detail_url": "https://example.com/detail",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(session, events, fetch_detail, now=datetime.now(tz=timezone.utc))
+
+    assert enriched[0]["description"] == "Show Family friendly fun."

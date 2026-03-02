@@ -34,7 +34,9 @@ The system is a **multi-stage pipeline**:
    - Diagnostic script: `python -m app.scripts.diagnose_source_url <url>`
    - Smoke extraction: `python -m app.scripts.extract_single_url <url> [--persist]`
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
-   - `extract_muenchen_kinder` must parse listing entries, fetch each event detail page, and pass both the matching listing-card snippet and detail-page content into extraction so dates/locations visible only on one side are still captured
+   - `extract_muenchen_kinder` must parse listing entries as structured occurrence rows first (title, schedule, location, ticket link) so repeated dates on the listing page are preserved instead of collapsed
+   - When the listing already provides title/date/location, use that structured listing data directly for event creation; only fall back to LLM extraction when the listing data is insufficient
+   - If LLM fallback is needed, pass the matching listing-card snippet and detail-page content into extraction so dates/locations visible only on one side are still captured
    - Do not pass the full multi-event listing page into each per-event LLM extraction call; use only per-card context to avoid context-length blowups
    - For muenchen.de kids events, the event detail URL (not the listing URL) is the canonical source URL used for DB rows and calendar source links
    - If a muenchen.de kids listing card exposes a ticket icon/link, that ticket URL overrides the calendar/source link for the event while the detail URL remains the extraction target
@@ -44,7 +46,7 @@ The system is a **multi-stage pipeline**:
    - Run `python -m app.scripts.migrate_db` before first use to backfill and enforce unique external keys
    - External idempotency: `external_key` (detail_url + start_time hash) enforces DB uniqueness; calendar tagging uses `extendedProperties.private.planz_key`
    - Calendar events keep clean titles; tagging via `extendedProperties.private.planz=true` (wipe uses this tag)
-   - Calendar location is plain address; source points to detail page; description includes single “More info” link
+   - Calendar location is plain address; the event link should be written to the Google Calendar source URL field and also appended in the description/notes field as a single “More info” link for client compatibility
    - Calendar upserts include `extendedProperties.private.planz_key` and retry on Google `rateLimitExceeded` with backoff; wipe uses the tag to delete only PLANZ events
    - Calendar upserts must include `extendedProperties.private.planz=true`; legacy wipe may also match old muenchen.de events via `extendedProperties.private.planz_source` or Google `source.url` when `--force-legacy` is used
    - Calendar search/list calls enforce `timeMax > timeMin`; malformed windows are logged once and skipped (no crashes)
@@ -52,6 +54,7 @@ The system is a **multi-stage pipeline**:
    - CLI observability: listing extraction logs one status line per page plus a DONE summary; heartbeat logs every ~30s on long steps unless LOG_LEVEL=DEBUG; `--verbose` or `LOG_LEVEL=DEBUG` enables detailed logs
    - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
    - `extract_muenchen_kinder` supports `--sync-days <N>` to limit calendar sync to events starting within the next `N` days for controlled validation runs
+   - `extract_muenchen_kinder` supports `--max-events <N>` to cap how many listing entries are processed for fast debug runs
 
 2. **Fetch**
  - Fetch raw page content for allowed SourceUrls
@@ -230,6 +233,7 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 
 - EventSeries caches detail pages by series_key (detail_url preferred, else domain+title+location)
 - Detail pages fetched once per series; repeated dates reuse cached description
+- Cached detail descriptions must be normalized to plain text before they are stored or synced; raw HTML must not be copied into calendar notes
 - Updated lazily during extraction; prevents redundant detail fetch costs
 
 ---

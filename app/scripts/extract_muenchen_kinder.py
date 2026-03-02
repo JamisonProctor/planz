@@ -34,6 +34,12 @@ TICKET_PREFIX = "🎟 "
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Extract all muenchen.de kinder listing pages.")
     parser.add_argument("--pages", type=int, default=None, help="Max pages to fetch")
+    parser.add_argument(
+        "--max-events",
+        type=int,
+        default=None,
+        help="Only process the first N listing entries across the run",
+    )
     parser.add_argument("--persist", action="store_true", help="Persist events to DB")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument(
@@ -76,26 +82,36 @@ def extract_detail_events_from_listing(
     listing_url: str,
     fetcher,
     extractor,
+    max_items: int | None = None,
 ) -> list[dict]:
     events: list[dict] = []
     listing_meta = parse_listing(listing_html, listing_url)
     for item in listing_meta:
+        if max_items is not None and len(events) >= max_items:
+            break
         detail_url = item["detail_url"]
         address = item.get("address")
         ticket_url = item.get("ticket_url")
         listing_text = item.get("listing_text") or ""
-        text, error, status = fetcher(detail_url)
-        if error or text is None:
-            logger.info(
-                "Skipping detail page fetch url=%s status=%s error=%s",
-                detail_url,
-                status,
-                error,
-            )
-            continue
+        extracted = _structured_events_from_listing_item(item)
+        if not extracted:
+            text, error, status = fetcher(detail_url)
+            if error or text is None:
+                logger.info(
+                    "Skipping detail page fetch url=%s status=%s error=%s",
+                    detail_url,
+                    status,
+                    error,
+                )
+                continue
 
-        combined_text = _combine_listing_and_detail_text(listing_text, text)
-        extracted = extractor(combined_text, source_url=detail_url)
+            combined_text = _combine_listing_and_detail_text(listing_text, text)
+            extracted = extractor(combined_text, source_url=detail_url)
+        if max_items is not None:
+            remaining_slots = max_items - len(events)
+            if remaining_slots <= 0:
+                break
+            extracted = extracted[:remaining_slots]
         for ev in extracted:
             ev["detail_url"] = detail_url
             if ticket_url:
@@ -116,6 +132,32 @@ def _combine_listing_and_detail_text(listing_text: str, detail_text: str) -> str
     if listing_text:
         return f"Listing context:\n{listing_text}\n\nDetail page:\n{detail_text}"
     return f"Detail page:\n{detail_text}"
+
+
+def _structured_events_from_listing_item(item: dict) -> list[dict]:
+    title = item.get("title")
+    start_time = item.get("start_time")
+    if not isinstance(title, str) or not title.strip() or not isinstance(start_time, str):
+        return []
+
+    event = {
+        "title": title.strip(),
+        "start_time": start_time,
+        "location": item.get("location") or item.get("address"),
+        "detail_url": item["detail_url"],
+        "source_url": item["detail_url"],
+    }
+    if isinstance(item.get("raw_schedule"), str):
+        event["raw_schedule"] = item["raw_schedule"]
+    if isinstance(item.get("end_time"), str):
+        event["end_time"] = item["end_time"]
+    return [event]
+
+
+def _resolve_sync_limit(max_events: int | None) -> int:
+    if max_events is not None:
+        return max_events
+    return 200
 
 
 def main() -> None:
@@ -152,7 +194,10 @@ def main() -> None:
 
         all_events = []
         run_stats: list[RunStats] = []
+        remaining_events = args.max_events
         for idx, page_url in enumerate(pages, 1):
+            if remaining_events is not None and remaining_events <= 0:
+                break
             stats = RunStats(page_index=idx, page_total=len(pages))
             with Timer("fetch") as t_fetch:
                 text, error, status = fetch_url_text(page_url)
@@ -170,10 +215,13 @@ def main() -> None:
                     listing_url=page_url,
                     fetcher=fetch_url_text,
                     extractor=extract_events_from_text,
+                    max_items=remaining_events,
                 )
             stop_hb()
             stats.extract_s = t_extract.elapsed
             all_events.extend(events)
+            if remaining_events is not None:
+                remaining_events = max(remaining_events - len(events), 0)
             stats.events_extracted = len(events)
             stats.total_elapsed_s = stats.fetch_s + stats.extract_s
             stats.log_status(logger)
@@ -223,7 +271,7 @@ def main() -> None:
                     session,
                     client,
                     now=now,
-                    limit=200,
+                    limit=_resolve_sync_limit(args.max_events),
                     grace_hours=0,
                     max_days=args.sync_days,
                 )
