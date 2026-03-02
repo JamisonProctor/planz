@@ -25,6 +25,13 @@ def reset_sync_state(session: Session) -> None:
     session.commit()
 
 
+def purge_events(session: Session) -> None:
+    """Delete all Event and CalendarSync rows. Debug use only."""
+    session.query(CalendarSync).delete()
+    session.query(Event).delete()
+    session.commit()
+
+
 def is_planz_event(event: dict[str, Any], force_legacy: bool = False) -> bool:
     extended = event.get("extendedProperties", {}) or {}
     private = extended.get("private", {}) or {}
@@ -105,6 +112,7 @@ def main() -> None:
     parser.add_argument("--force-legacy", action="store_true", help="Also delete legacy [PLZ] prefix events without tag")
     parser.add_argument("--sleep-ms", type=int, default=200, help="Sleep between deletions to reduce rate limits")
     parser.add_argument("--reset-sync", action="store_true", help="Also clear CalendarSync records and google_event_id from DB for a clean-slate debug run")
+    parser.add_argument("--purge-events", action="store_true", help="Delete ALL Event and CalendarSync rows from DB. Debug use only.")
     args = parser.parse_args()
 
     load_env()
@@ -114,12 +122,16 @@ def main() -> None:
     if args.sleep_ms > 0:
         time.sleep(args.sleep_ms / 1000)
     wipe_planz_events(client, days=args.days, dry_run=args.dry_run, force_legacy=args.force_legacy)
-    if args.reset_sync:
+    if args.purge_events or args.reset_sync:
         session_gen = get_session()
         session = next(session_gen)
         try:
-            reset_sync_state(session)
-            print("DB sync state reset: CalendarSync records cleared, google_event_id nulled.")
+            if args.purge_events:
+                purge_events(session)
+                print("DB purged: all Event and CalendarSync rows deleted.")
+            elif args.reset_sync:
+                reset_sync_state(session)
+                print("DB sync state reset: CalendarSync records cleared, google_event_id nulled.")
         finally:
             try:
                 next(session_gen)

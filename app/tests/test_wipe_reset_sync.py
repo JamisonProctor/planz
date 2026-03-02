@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.base import Base
 from app.db.models.calendar_sync import CalendarSync
 from app.db.models.event import Event
-from app.scripts.calendar_wipe_planz import reset_sync_state
+from app.scripts.calendar_wipe_planz import reset_sync_state, purge_events
 
 
 def _make_session():
@@ -57,6 +57,18 @@ def test_reset_sync_state_clears_google_event_id() -> None:
 
     session.refresh(event)
     assert event.google_event_id is None
+
+
+def test_purge_events_removes_all_events_and_syncs() -> None:
+    session = _make_session()
+    _make_event(session)
+    assert session.scalar(select(Event)) is not None
+    assert session.scalar(select(CalendarSync)) is not None
+
+    purge_events(session)
+
+    assert session.scalar(select(Event)) is None
+    assert session.scalar(select(CalendarSync)) is None
 
 
 def test_reset_sync_state_allows_resync() -> None:
