@@ -27,6 +27,8 @@ def enumerate_listing_pages(
             break
         seen.add(current)
         yield current
+        if len(seen) >= max_pages:
+            break
         text, error, status = fetcher(current, 10.0)
         if error or text is None:
             break

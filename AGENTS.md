@@ -44,6 +44,7 @@ The system is a **multi-stage pipeline**:
    - Ticket-link events must be visually marked with a leading ticket emoji in the event title so calendar users can identify them immediately
    - Pagination helper for muenchen.de kids listings; cap via `PLANZ_MAX_LISTING_PAGES`
    - Pagination stops when next link repeats or content hash unchanged; logged URLs: "Listing pages to process: ..."
+   - Pagination must not fetch an already-yielded final page just to probe for `rel="next"` after `max_pages` has been reached
    - Run `python -m app.scripts.migrate_db` before first use to backfill and enforce unique external keys
    - External idempotency: `external_key` (detail_url + start_time hash) enforces DB uniqueness; calendar tagging uses `extendedProperties.private.planz_key`
    - Calendar events keep clean titles; tagging via `extendedProperties.private.planz=true` (wipe uses this tag)

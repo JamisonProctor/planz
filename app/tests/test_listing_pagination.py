@@ -84,3 +84,22 @@ def test_enumerate_listing_pages_resolves_relative() -> None:
         )
     )
     assert urls == ["https://example.com/page1", "https://example.com/page2"]
+
+
+def test_enumerate_listing_pages_does_not_fetch_after_reaching_max_pages() -> None:
+    fetch_calls: list[str] = []
+
+    def fetcher(url: str, timeout: float = 10.0):
+        fetch_calls.append(url)
+        return PAGE1, None, 200
+
+    urls = list(
+        enumerate_listing_pages(
+            start_url="https://example.com/page1",
+            fetcher=fetcher,
+            max_pages=1,
+        )
+    )
+
+    assert urls == ["https://example.com/page1"]
+    assert fetch_calls == []
