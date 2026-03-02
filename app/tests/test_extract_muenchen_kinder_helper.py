@@ -56,6 +56,7 @@ def test_extract_detail_events_from_listing_uses_listing_rows_as_canonical_event
             "detail_url": "https://www.muenchen.de/veranstaltungen/ausstellungen/kinder/kindheit-am-nil-aegyptisches-museum",
             "source_url": "https://www.muenchen.de/veranstaltungen/ausstellungen/kinder/kindheit-am-nil-aegyptisches-museum",
             "location": "Museumstrasse 1",
+            "is_calendar_candidate": True,
         }
     ]
 
@@ -109,6 +110,7 @@ def test_extract_detail_events_from_listing_uses_ticket_url_and_marks_title() ->
             "source_url": "https://tickets.example.com/kindheit-am-nil",
             "ticket_url": "https://tickets.example.com/kindheit-am-nil",
             "location": "Museumstrasse 1",
+            "is_calendar_candidate": True,
         }
     ]
 
@@ -223,8 +225,57 @@ def test_extract_detail_events_from_listing_uses_ticket_only_rows_without_detail
             "source_url": "https://www.muenchenticket.de/event/grosses-kinderkino-35968/441877?campaign=muenchen",
             "ticket_url": "https://www.muenchenticket.de/event/grosses-kinderkino-35968/441877?campaign=muenchen",
             "location": "Gasteig HP8",
+            "is_calendar_candidate": True,
         }
     ]
+
+
+def test_extract_detail_events_date_range_marks_weekdays_as_non_candidates() -> None:
+    """Range-expanded events must set is_calendar_candidate based on weekend/holiday rules."""
+    listing_html = """
+    <html><body>
+    <div class="card">
+      <div>05 MÄRZ bis 09 MÄRZ</div>
+      <a href="/veranstaltungen/ausstellungen/kinder/some-event">Some Exhibition</a>
+      <div>Do. 05.03.2026 10:00 - 17:00 Uhr</div>
+      <div class="location">Museum</div>
+    </div>
+    </body></html>
+    """
+
+    events = extract_detail_events_from_listing(
+        listing_html=listing_html,
+        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+    )
+
+    # Mar 5=Thu, Mar 6=Fri, Mar 7=Sat, Mar 8=Sun, Mar 9=Mon
+    assert len(events) == 5
+    assert [e["start_time"][:10] for e in events] == [
+        "2026-03-05", "2026-03-06", "2026-03-07", "2026-03-08", "2026-03-09"
+    ]
+    assert [e.get("is_calendar_candidate") for e in events] == [
+        False, False, True, True, False
+    ]
+
+
+def test_extract_detail_events_single_occurrence_is_always_candidate() -> None:
+    """Single-occurrence events (no date range) must always be calendar candidates."""
+    listing_html = """
+    <html><body>
+    <div class="card">
+      <a href="/veranstaltungen/ausstellungen/kinder/some-event">Some Event</a>
+      <div>Mi. 04.03.2026 10:00 - 12:00 Uhr</div>
+    </div>
+    </body></html>
+    """
+
+    events = extract_detail_events_from_listing(
+        listing_html=listing_html,
+        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+    )
+
+    assert len(events) == 1
+    assert events[0].get("is_calendar_candidate", True) is True
 
 
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:

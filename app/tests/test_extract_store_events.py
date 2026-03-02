@@ -209,6 +209,30 @@ def test_store_extracted_events_updates_and_marks_for_resync() -> None:
     assert sync_rows == []
 
 
+def test_store_extracted_events_respects_is_calendar_candidate_false() -> None:
+    """is_calendar_candidate=False from the extractor must not be overridden to True."""
+    session = _make_session()
+    source_url = _create_source_url(session, content_hash="hash8")
+    now = datetime.now(tz=timezone.utc)
+    start = (now + timedelta(days=2)).astimezone(timezone.utc).isoformat()
+    end = (now + timedelta(days=2, hours=1)).astimezone(timezone.utc).isoformat()
+
+    extracted = [
+        {
+            "title": "Weekday Exhibition",
+            "start_time": start,
+            "end_time": end,
+            "detail_url": "https://example.com/detail",
+            "is_calendar_candidate": False,
+        }
+    ]
+
+    store_extracted_events(session, source_url, extracted, now=now)
+    event = session.scalars(select(Event)).one()
+
+    assert event.is_calendar_candidate is False
+
+
 def test_store_extracted_events_prefers_ticket_url_for_calendar_source() -> None:
     session = _make_session()
     source_url = _create_source_url(session, content_hash="hash7")

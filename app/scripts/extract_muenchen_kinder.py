@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from app.db.models.source_domain import get_or_create_domain
 from app.db.models.source_url import SourceUrl
+from app.services.extract.weekend_slicer import _is_recommendation_day
 
 logger = logging.getLogger(__name__)
 TICKET_PREFIX = "🎟 "
@@ -148,7 +149,7 @@ def _structured_events_from_listing_item(item: dict) -> list[dict]:
         return []
 
     events: list[dict] = []
-    for slot_start, slot_end in _expand_visible_date_range(
+    for slot_start, slot_end, is_candidate in _expand_visible_date_range(
         item=item,
         start_time=start_time,
         end_time=item.get("end_time"),
@@ -158,6 +159,7 @@ def _structured_events_from_listing_item(item: dict) -> list[dict]:
             "start_time": slot_start,
             "location": item.get("location") or item.get("address"),
             "source_url": source_url,
+            "is_calendar_candidate": is_candidate,
         }
         if detail_url:
             event["detail_url"] = detail_url
@@ -174,15 +176,15 @@ def _expand_visible_date_range(
     item: dict,
     start_time: str,
     end_time: str | None,
-) -> list[tuple[str, str | None]]:
+) -> list[tuple[str, str | None, bool]]:
     start_dt = datetime.fromisoformat(start_time)
     range_bounds = _extract_date_range_bounds(item, reference_year=start_dt.year)
     if range_bounds is None:
-        return [(start_time, end_time if isinstance(end_time, str) else None)]
+        return [(start_time, end_time if isinstance(end_time, str) else None, True)]
 
     range_start, range_end = range_bounds
     end_dt = datetime.fromisoformat(end_time) if isinstance(end_time, str) else None
-    slots: list[tuple[str, str | None]] = []
+    slots: list[tuple[str, str | None, bool]] = []
     current = range_start
     while current <= range_end:
         slot_start = _copy_time_to_date(start_dt, current)
@@ -193,6 +195,7 @@ def _expand_visible_date_range(
             (
                 slot_start.isoformat(),
                 slot_end.isoformat() if slot_end else None,
+                _is_recommendation_day(current),
             )
         )
         current = current.fromordinal(current.toordinal() + 1)
@@ -202,7 +205,7 @@ def _expand_visible_date_range(
 def _extract_date_range_bounds(item: dict, reference_year: int) -> tuple[date, date] | None:
     range_start = _parse_iso_date(item.get("range_start_date"))
     range_end = _parse_iso_date(item.get("range_end_date"))
-    if range_start and range_end:
+    if range_start and range_end and range_end > range_start:
         return range_start, range_end
 
     listing_text = item.get("listing_text") or ""

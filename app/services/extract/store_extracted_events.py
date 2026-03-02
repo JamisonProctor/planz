@@ -86,7 +86,7 @@ def store_extracted_events(
                     "source_url": _event_source_url(item, source_url.url),
                     "detail_url": item.get("detail_url"),
                     "ticket_url": item.get("ticket_url"),
-                    "is_calendar_candidate": True,
+                    "is_calendar_candidate": item.get("is_calendar_candidate", True),
                 }
             ]
 
