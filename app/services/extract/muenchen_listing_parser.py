@@ -28,7 +28,7 @@ def parse_listing(html: str, base_url: str) -> list[dict[str, Any]]:
             continue
         if parsed.path == base_path:
             continue
-        card = link.find_parent()
+        card = _find_listing_card(link)
         address = None
         listing_text = None
         if card:
@@ -111,3 +111,14 @@ def _is_ticket_link(link) -> bool:
     ]
     haystack = " ".join(part.lower() for part in attrs if part)
     return "ticket" in haystack or "karten" in haystack
+
+
+def _find_listing_card(link):
+    current = link.parent
+    fallback = current
+    while current is not None:
+        classes = current.get("class", [])
+        if isinstance(classes, list) and "card" in classes:
+            return current
+        current = current.parent
+    return fallback

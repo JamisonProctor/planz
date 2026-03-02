@@ -50,6 +50,16 @@ OCCURRENCE_HTML = """
 </body></html>
 """
 
+NESTED_CARD_HTML = """
+<html><body>
+<div class="card">
+ <h3><a href="/veranstaltungen/ausstellungen/kinder/der-gasteig-brummt">Der Gasteig brummt</a></h3>
+ <div>Fr. 06.03.2026 09:00 - 11:00 Uhr</div>
+ <div class="location">Gasteig HP8</div>
+</div>
+</body></html>
+"""
+
 
 def test_parse_listing_extracts_detail_and_address():
     events = parse_listing(HTML, base_url="https://www.muenchen.de/veranstaltungen/event/kinder")
@@ -110,3 +120,15 @@ def test_parse_listing_extracts_structured_occurrences_without_deduping_same_det
     assert events[0]["start_time"] == "2026-03-06T09:00:00+01:00"
     assert events[0]["end_time"] == "2026-03-06T11:00:00+01:00"
     assert events[1]["raw_schedule"] == "Sa. 07.03.2026 09:00 - 11:00 Uhr"
+
+
+def test_parse_listing_finds_schedule_from_ancestor_card() -> None:
+    events = parse_listing(
+        NESTED_CARD_HTML,
+        base_url="https://www.muenchen.de/veranstaltungen/event/kinder",
+    )
+
+    assert len(events) == 1
+    assert events[0]["title"] == "Der Gasteig brummt"
+    assert events[0]["raw_schedule"] == "Fr. 06.03.2026 09:00 - 11:00 Uhr"
+    assert events[0]["location"] == "Gasteig HP8"

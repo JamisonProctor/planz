@@ -10,7 +10,8 @@ from app.core.env import load_env
 from app.db.migrations.sqlite import ensure_sqlite_schema
 from app.db.session import engine, get_session
 from app.logging import configure_logging
-from app.services.extract.llm_event_extractor import extract_events_from_text
+from app.services.extract.html_to_text import HtmlToText
+from app.services.extract.llm_event_extractor import summarize_event_detail
 from app.services.extract.series_cache import enrich_with_series_cache
 from app.services.extract.store_extracted_events import store_extracted_events
 from app.services.extract.muenchen_listing_parser import parse_listing
@@ -80,10 +81,7 @@ def extract_detail_events_from_listing(
     *,
     listing_html: str,
     listing_url: str,
-    fetcher,
-    extractor,
     max_items: int | None = None,
-    allow_llm_fallback: bool = True,
 ) -> list[dict]:
     events: list[dict] = []
     listing_meta = parse_listing(listing_html, listing_url)
@@ -93,21 +91,9 @@ def extract_detail_events_from_listing(
         detail_url = item["detail_url"]
         address = item.get("address")
         ticket_url = item.get("ticket_url")
-        listing_text = item.get("listing_text") or ""
         extracted = _structured_events_from_listing_item(item)
-        if not extracted and allow_llm_fallback:
-            text, error, status = fetcher(detail_url)
-            if error or text is None:
-                logger.info(
-                    "Skipping detail page fetch url=%s status=%s error=%s",
-                    detail_url,
-                    status,
-                    error,
-                )
-                continue
-
-            combined_text = _combine_listing_and_detail_text(listing_text, text)
-            extracted = extractor(combined_text, source_url=detail_url)
+        if not extracted:
+            continue
         if max_items is not None:
             remaining_slots = max_items - len(events)
             if remaining_slots <= 0:
@@ -129,12 +115,6 @@ def extract_detail_events_from_listing(
     return events
 
 
-def _combine_listing_and_detail_text(listing_text: str, detail_text: str) -> str:
-    if listing_text:
-        return f"Listing context:\n{listing_text}\n\nDetail page:\n{detail_text}"
-    return f"Detail page:\n{detail_text}"
-
-
 def _structured_events_from_listing_item(item: dict) -> list[dict]:
     title = item.get("title")
     start_time = item.get("start_time")
@@ -153,6 +133,39 @@ def _structured_events_from_listing_item(item: dict) -> list[dict]:
     if isinstance(item.get("end_time"), str):
         event["end_time"] = item["end_time"]
     return [event]
+
+
+def _build_detail_summary_fetcher(fetcher, summarizer):
+    html_to_text = HtmlToText()
+
+    def fetch_detail_summary(detail_url: str) -> str:
+        text, error, status = fetcher(detail_url)
+        if error or text is None:
+            logger.info(
+                "Skipping detail page summary url=%s status=%s error=%s",
+                detail_url,
+                status,
+                error,
+            )
+            return ""
+        detail_text = html_to_text.extract(text)
+        if not detail_text:
+            return ""
+        summary_data = summarizer(detail_text, source_url=detail_url)
+        return _format_detail_summary(summary_data)
+
+    return fetch_detail_summary
+
+
+def _format_detail_summary(summary_data: dict) -> str:
+    parts: list[str] = []
+    summary = summary_data.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        parts.append(summary.strip())
+    cost = summary_data.get("cost")
+    if isinstance(cost, str) and cost.strip():
+        parts.append(f"Cost: {cost.strip()}")
+    return "\n\n".join(parts)
 
 
 def _resolve_sync_limit(max_events: int | None) -> int:
@@ -214,10 +227,7 @@ def main() -> None:
                 events = extract_detail_events_from_listing(
                     listing_html=text,
                     listing_url=page_url,
-                    fetcher=fetch_url_text,
-                    extractor=extract_events_from_text,
                     max_items=remaining_events,
-                    allow_llm_fallback=args.max_events is None,
                 )
             stop_hb()
             stats.extract_s = t_extract.elapsed
@@ -247,9 +257,10 @@ def main() -> None:
             )
             return
 
-        def detail_fetcher(detail_url: str) -> str:
-            text, error, status = fetch_url_text(detail_url)
-            return text or ""
+        detail_fetcher = _build_detail_summary_fetcher(
+            fetch_url_text,
+            summarize_event_detail,
+        )
 
         with Timer("persist") as t_persist:
             enriched = enrich_with_series_cache(session, all_events, detail_fetcher, now=now)

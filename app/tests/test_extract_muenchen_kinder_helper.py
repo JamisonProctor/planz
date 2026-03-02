@@ -5,6 +5,7 @@ from app.db.base import Base
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.scripts.extract_muenchen_kinder import (
+    _build_detail_summary_fetcher,
     _resolve_sync_limit,
     extract_detail_events_from_listing,
     prepare_source_url,
@@ -31,7 +32,7 @@ def test_prepare_source_url_reuses_existing() -> None:
     assert session.scalar(select(SourceUrl)).id == existing.id
 
 
-def test_extract_detail_events_from_listing_fetches_each_detail_page() -> None:
+def test_extract_detail_events_from_listing_uses_listing_rows_as_canonical_events() -> None:
     listing_html = """
     <html><body>
     <div class="card">
@@ -41,26 +42,12 @@ def test_extract_detail_events_from_listing_fetches_each_detail_page() -> None:
     </div>
     </body></html>
     """
-    fetch_calls: list[str] = []
-    extract_calls: list[str] = []
-
-    def fetcher(url: str):
-        fetch_calls.append(url)
-        return ("detail content", None, 200)
-
-    def extractor(text: str, source_url: str):
-        extract_calls.append(source_url)
-        return [{"title": "Kindheit am Nil", "start_time": "2026-03-07T10:00:00+01:00"}]
 
     events = extract_detail_events_from_listing(
         listing_html=listing_html,
         listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
-        fetcher=fetcher,
-        extractor=extractor,
     )
 
-    assert fetch_calls == []
-    assert extract_calls == []
     assert events == [
         {
             "title": "Kindheit am Nil",
@@ -74,7 +61,7 @@ def test_extract_detail_events_from_listing_fetches_each_detail_page() -> None:
     ]
 
 
-def test_extract_detail_events_from_listing_passes_listing_and_detail_content_to_extractor() -> None:
+def test_extract_detail_events_from_listing_skips_rows_without_structured_schedule() -> None:
     listing_html = """
     <html><body>
     <div class="card">
@@ -82,27 +69,18 @@ def test_extract_detail_events_from_listing_passes_listing_and_detail_content_to
       <div>Fr. 07.03.2026 10:00 - 12:00 Uhr</div>
     </div>
     <div class="card">
-      <a href="/not-an-event">Other Event</a>
+      <a href="/veranstaltungen/ausstellungen/kinder/without-schedule">No Schedule Yet</a>
+      <div class="address">Museumstrasse 2</div>
     </div>
     </body></html>
     """
-    seen_texts: list[str] = []
 
-    def fetcher(url: str):
-        return ("DETAIL DATE: 7 March, Museumstrasse 1", None, 200)
-
-    def extractor(text: str, source_url: str):
-        seen_texts.append(text)
-        return [{"title": "Kindheit am Nil", "start_time": "2026-03-07T10:00:00+01:00"}]
-
-    extract_detail_events_from_listing(
+    events = extract_detail_events_from_listing(
         listing_html=listing_html,
         listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
-        fetcher=fetcher,
-        extractor=extractor,
     )
 
-    assert seen_texts == []
+    assert [event["title"] for event in events] == ["Kindheit am Nil"]
 
 
 def test_extract_detail_events_from_listing_uses_ticket_url_and_marks_title() -> None:
@@ -117,17 +95,9 @@ def test_extract_detail_events_from_listing_uses_ticket_url_and_marks_title() ->
     </body></html>
     """
 
-    def fetcher(url: str):
-        return ("detail content", None, 200)
-
-    def extractor(text: str, source_url: str):
-        return [{"title": "Kindheit am Nil", "start_time": "2026-03-07T10:00:00+01:00"}]
-
     events = extract_detail_events_from_listing(
         listing_html=listing_html,
         listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
-        fetcher=fetcher,
-        extractor=extractor,
     )
 
     assert events == [
@@ -161,59 +131,48 @@ def test_extract_detail_events_from_listing_respects_max_items() -> None:
     </div>
     </body></html>
     """
-    fetch_calls: list[str] = []
-
-    def fetcher(url: str):
-        fetch_calls.append(url)
-        return ("detail content", None, 200)
-
-    def extractor(text: str, source_url: str):
-        raise AssertionError("structured listing path should not call extractor")
 
     events = extract_detail_events_from_listing(
         listing_html=listing_html,
         listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
-        fetcher=fetcher,
-        extractor=extractor,
         max_items=2,
     )
 
-    assert len(fetch_calls) == 0
     assert len(events) == 2
     assert events[0]["title"] == "One"
     assert events[1]["title"] == "Two"
 
 
-def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
-    assert _resolve_sync_limit(None) == 200
-    assert _resolve_sync_limit(3) == 3
-
-
-def test_extract_detail_events_from_listing_skips_llm_fallback_in_debug_mode() -> None:
-    listing_html = """
-    <html><body>
-    <div class="card">
-      <a href="/veranstaltungen/ausstellungen/kinder/one">One</a>
-    </div>
-    </body></html>
-    """
+def test_build_detail_summary_fetcher_returns_summary_with_cost() -> None:
     fetch_calls: list[str] = []
+    summarize_calls: list[tuple[str, str]] = []
 
     def fetcher(url: str):
         fetch_calls.append(url)
-        return ("detail content", None, 200)
+        return (
+            "<html><body><h1>Der Gasteig brummt!</h1><p>Tickets fuer nur 3 Euro.</p></body></html>",
+            None,
+            200,
+        )
 
-    def extractor(text: str, source_url: str):
-        raise AssertionError("debug mode should not call extractor")
+    def summarizer(text: str, source_url: str):
+        summarize_calls.append((text, source_url))
+        return {"summary": "Musiktage fuer Kinder zum Mitmachen.", "cost": "3 Euro"}
 
-    events = extract_detail_events_from_listing(
-        listing_html=listing_html,
-        listing_url="https://www.muenchen.de/veranstaltungen/event/kinder",
-        fetcher=fetcher,
-        extractor=extractor,
-        max_items=2,
-        allow_llm_fallback=False,
-    )
+    fetch_detail_summary = _build_detail_summary_fetcher(fetcher, summarizer)
 
-    assert events == []
-    assert fetch_calls == []
+    summary = fetch_detail_summary("https://www.muenchen.de/veranstaltungen/kinder/der-gasteig-brummt")
+
+    assert fetch_calls == ["https://www.muenchen.de/veranstaltungen/kinder/der-gasteig-brummt"]
+    assert summarize_calls == [
+        (
+            "Der Gasteig brummt! Tickets fuer nur 3 Euro.",
+            "https://www.muenchen.de/veranstaltungen/kinder/der-gasteig-brummt",
+        )
+    ]
+    assert summary == "Musiktage fuer Kinder zum Mitmachen.\n\nCost: 3 Euro"
+
+
+def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
+    assert _resolve_sync_limit(None) == 200
+    assert _resolve_sync_limit(3) == 3

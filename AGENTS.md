@@ -35,9 +35,9 @@ The system is a **multi-stage pipeline**:
    - Smoke extraction: `python -m app.scripts.extract_single_url <url> [--persist]`
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
    - `extract_muenchen_kinder` must parse listing entries as structured occurrence rows first (title, schedule, location, ticket link) so repeated dates on the listing page are preserved instead of collapsed
-   - When the listing already provides title/date/location, use that structured listing data directly for event creation; only fall back to LLM extraction when the listing data is insufficient
-   - If LLM fallback is needed, pass the matching listing-card snippet and detail-page content into extraction so dates/locations visible only on one side are still captured
-   - Do not pass the full multi-event listing page into each per-event LLM extraction call; use only per-card context to avoid context-length blowups
+   - For this source, the listing row is the canonical event record; do not use detail-page LLM extraction to invent title/date/location fields
+   - Detail pages may still be fetched for enrichment, but only to generate a short summary and optional cost note, not to create the event row itself
+   - Do not pass the full multi-event listing page into each per-event LLM call; send only normalized detail-page text when summarizing
    - For muenchen.de kids events, the event detail URL (not the listing URL) is the canonical source URL used for DB rows and calendar source links
    - If a muenchen.de kids listing card exposes a ticket icon/link, that ticket URL overrides the calendar/source link for the event while the detail URL remains the extraction target
    - Ticket-link events must be visually marked with a leading ticket emoji in the event title so calendar users can identify them immediately
@@ -55,7 +55,6 @@ The system is a **multi-stage pipeline**:
    - `extract_muenchen_kinder` supports `--no-sync` to skip calendar sync for data-only runs
    - `extract_muenchen_kinder` supports `--sync-days <N>` to limit calendar sync to events starting within the next `N` days for controlled validation runs
    - `extract_muenchen_kinder` supports `--max-events <N>` to cap how many listing entries are processed for fast debug runs
-   - In `extract_muenchen_kinder` debug runs (`--max-events`), disable LLM fallback and use only structured listing rows so manual checks complete quickly
 
 2. **Fetch**
  - Fetch raw page content for allowed SourceUrls
@@ -64,7 +63,8 @@ The system is a **multi-stage pipeline**:
 
 3. **Extraction**  
    - LLM-based extraction of IRL events from fetched content
-   - When the LLM is used for extraction, keep reasoning effort at the lowest supported setting to minimize latency and token overhead
+   - For the muenchen kids listing, the LLM is used only as a detail-page summarizer after structured listing extraction; it is not the primary source of event fields
+   - When the LLM is used, keep reasoning effort at the lowest supported setting to minimize latency and token overhead
    - Idempotent via content hash comparison
    - Produces structured `Event` rows
    - Extraction stats persisted per `SourceUrl` (status/count/error)
