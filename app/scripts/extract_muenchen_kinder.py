@@ -261,7 +261,7 @@ def _copy_time_to_date(source: datetime, target_date: date) -> datetime:
 
 def _resolve_sync_limit(max_events: int | None) -> int:
     if max_events is not None:
-        return max_events * 20  # each listing item may expand to many date rows
+        return max_events
     return 200
 
 

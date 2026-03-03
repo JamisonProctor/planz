@@ -314,4 +314,4 @@ def test_max_items_counts_listing_items_not_expanded_rows() -> None:
 
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
     assert _resolve_sync_limit(None) == 200
-    assert _resolve_sync_limit(3) == 60  # 3 items * 20 expansion factor
+    assert _resolve_sync_limit(3) == 3
