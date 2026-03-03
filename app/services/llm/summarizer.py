@@ -15,7 +15,10 @@ _SYSTEM_PROMPT = (
     "You are a helpful assistant for parents in Munich. "
     "Return a JSON object with exactly three fields:\n"
     '- "summary": 2-3 sentences in English describing the event for parents, including target age range and key family appeal\n'
-    '- "is_paid": true if the event requires an admission fee or ticket purchase, false if it is free\n'
+    '- "is_paid": true if the event requires an admission fee or ticket purchase; '
+    'German indicators include: "Karten", "Eintrittskarten", "Eintritt", "Tickets", '
+    '"Abendkasse", "kostenpflichtig", "Ticketpreis", "VVK", "Vorverkauf"; '
+    'set false only if the page explicitly states it is free ("kostenlos", "freier Eintritt", "Eintritt frei")\n'
     '- "address": the full street address and city (e.g. "Museumstrasse 1, 80538 München"), or null if not found\n'
     "Return only valid JSON. Do not include any other text."
 )
