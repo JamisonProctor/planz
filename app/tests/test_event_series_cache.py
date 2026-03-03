@@ -211,3 +211,80 @@ def test_enrich_fills_missing_description_on_cached_series_with_detail_url() -> 
     # Description should now be persisted on the series row
     session.refresh(existing)
     assert existing.description == "A great show for families."
+
+
+def test_enrich_sets_llm_summary_from_source_url_when_no_detail_url() -> None:
+    """Ticket-only events with no detail_url should be summarized using their source_url."""
+    session = _make_session()
+
+    fetched_urls = []
+
+    def fetch_detail(url: str) -> str:
+        fetched_urls.append(url)
+        return "Ticket page content about the show"
+
+    def fake_summarizer(text: str) -> str | None:
+        return "A fun show for kids aged 4-8."
+
+    events = [
+        {
+            "title": "🎟 Die kleine Hexe",
+            "location": "Theater",
+            "source_url": "https://www.muenchenticket.de/event/hexe/440797",
+            "start_time": datetime.now(tz=timezone.utc),
+            # No detail_url
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert enriched[0]["description"] == "A fun show for kids aged 4-8."
+    assert fetched_urls == ["https://www.muenchenticket.de/event/hexe/440797"]
+
+
+def test_enrich_fills_missing_description_on_cached_series_without_detail_url() -> None:
+    """Cached ticket-only series with no description should use source_url to fill it in."""
+    session = _make_session()
+
+    # Pre-populate series with no detail_url and no description
+    existing = EventSeries(
+        series_key="www.muenchenticket.de:🎟 die kleine hexe:theater",
+        detail_url=None,
+        title="🎟 Die kleine Hexe",
+        venue="Theater",
+        description=None,
+        updated_at=datetime.now(tz=timezone.utc),
+    )
+    session.add(existing)
+    session.commit()
+
+    summarizer_calls = {"count": 0}
+
+    def fake_summarizer(text: str) -> str | None:
+        summarizer_calls["count"] += 1
+        return "A spooky witch story for children."
+
+    def fetch_detail(url: str) -> str:
+        return "Ticket page content"
+
+    events = [
+        {
+            "title": "🎟 Die kleine Hexe",
+            "location": "Theater",
+            "source_url": "https://www.muenchenticket.de/event/hexe/440797",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert enriched[0]["description"] == "A spooky witch story for children."
+    assert summarizer_calls["count"] == 1
+    session.refresh(existing)
+    assert existing.description == "A spooky witch story for children."

@@ -41,9 +41,9 @@ def enrich_with_series_cache(
             series = session.scalar(select(EventSeries).where(EventSeries.series_key == key))
             if series is None:
                 description = None
-                detail_url = item.get("detail_url")
-                if detail_url:
-                    page_text = html_to_text.extract(detail_fetcher(detail_url))
+                fetch_url = item.get("detail_url") or item.get("source_url")
+                if fetch_url:
+                    page_text = html_to_text.extract(detail_fetcher(fetch_url))
                     description = summarizer(page_text) if page_text else None
                 series = EventSeries(
                     series_key=key,
@@ -55,14 +55,16 @@ def enrich_with_series_cache(
                 )
                 session.add(series)
                 session.flush()
-            elif series.description is None and series.detail_url:
+            elif series.description is None:
                 # Existing series missing summary — fill it in now
-                page_text = html_to_text.extract(detail_fetcher(series.detail_url))
-                if page_text:
-                    description = summarizer(page_text)
-                    if description:
-                        series.description = description
-                        session.flush()
+                fetch_url = series.detail_url or item.get("source_url")
+                if fetch_url:
+                    page_text = html_to_text.extract(detail_fetcher(fetch_url))
+                    if page_text:
+                        description = summarizer(page_text)
+                        if description:
+                            series.description = description
+                            session.flush()
             cache[key] = series
 
         new_item = dict(item)
