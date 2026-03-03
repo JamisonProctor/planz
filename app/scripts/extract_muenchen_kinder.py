@@ -275,6 +275,30 @@ def _copy_time_to_date(source: datetime, target_date: date) -> datetime:
     )
 
 
+def _deduplicate_events(events: list[dict]) -> list[dict]:
+    """Remove duplicate events that share the same title, start_time, and location.
+
+    muenchen.de often lists the same performance multiple times with different
+    ticket URLs (different seating categories). Keep only the first occurrence.
+
+    start_time is compared without timezone offset (first 19 chars) to handle
+    inconsistent CET/CEST parsing across listing items for the same show.
+    """
+    seen: set[tuple] = set()
+    result: list[dict] = []
+    for event in events:
+        start = (event.get("start_time") or "")[:19]
+        key = (
+            event.get("title") or "",
+            start,
+            event.get("location") or "",
+        )
+        if key not in seen:
+            seen.add(key)
+            result.append(event)
+    return result
+
+
 def _resolve_sync_limit(max_events: int | None) -> int:
     if max_events is not None:
         return max_events
@@ -347,6 +371,8 @@ def main() -> None:
             run_stats.append(stats)
 
         logger.info("Extracted raw events: %s", len(all_events))
+        all_events = _deduplicate_events(all_events)
+        logger.info("After dedup: %s events", len(all_events))
 
         if args.persist and not args.no_llm:
             logger.info("Enriching events with LLM detail-page summaries...")

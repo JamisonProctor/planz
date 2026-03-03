@@ -5,6 +5,7 @@ from app.db.base import Base
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.scripts.extract_muenchen_kinder import (
+    _deduplicate_events,
     _resolve_sync_limit,
     extract_detail_events_from_listing,
     prepare_source_url,
@@ -315,3 +316,42 @@ def test_max_items_counts_listing_items_not_expanded_rows() -> None:
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
     assert _resolve_sync_limit(None) == 200
     assert _resolve_sync_limit(3) == 3
+
+
+def test_deduplicate_events_removes_same_title_time_location() -> None:
+    events = [
+        {"title": "🎟 Die kleine Hexe", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater", "source_url": "https://ticket.de/1"},
+        {"title": "🎟 Die kleine Hexe", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater", "source_url": "https://ticket.de/2"},
+        {"title": "🎟 Die kleine Hexe", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater", "source_url": "https://ticket.de/3"},
+    ]
+    result = _deduplicate_events(events)
+    assert len(result) == 1
+    assert result[0]["source_url"] == "https://ticket.de/1"
+
+
+def test_deduplicate_events_keeps_different_start_times() -> None:
+    events = [
+        {"title": "Show", "start_time": "2026-03-21T10:00:00+01:00", "location": "Theater", "source_url": "https://ticket.de/1"},
+        {"title": "Show", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater", "source_url": "https://ticket.de/2"},
+    ]
+    result = _deduplicate_events(events)
+    assert len(result) == 2
+
+
+def test_deduplicate_events_keeps_different_venues() -> None:
+    events = [
+        {"title": "Show", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater A", "source_url": "https://ticket.de/1"},
+        {"title": "Show", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater B", "source_url": "https://ticket.de/2"},
+    ]
+    result = _deduplicate_events(events)
+    assert len(result) == 2
+
+
+def test_deduplicate_events_preserves_first_occurrence() -> None:
+    events = [
+        {"title": "Show", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater", "source_url": "https://ticket.de/KEEP"},
+        {"title": "Show", "start_time": "2026-03-21T15:00:00+01:00", "location": "Theater", "source_url": "https://ticket.de/DROP"},
+    ]
+    result = _deduplicate_events(events)
+    assert len(result) == 1
+    assert result[0]["source_url"] == "https://ticket.de/KEEP"
