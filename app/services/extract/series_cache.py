@@ -55,6 +55,14 @@ def enrich_with_series_cache(
                 )
                 session.add(series)
                 session.flush()
+            elif series.description is None and series.detail_url:
+                # Existing series missing summary — fill it in now
+                page_text = html_to_text.extract(detail_fetcher(series.detail_url))
+                if page_text:
+                    description = summarizer(page_text)
+                    if description:
+                        series.description = description
+                        session.flush()
             cache[key] = series
 
         new_item = dict(item)

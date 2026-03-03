@@ -165,3 +165,49 @@ def test_enrich_skips_description_when_summarizer_returns_none() -> None:
     )
 
     assert "description" not in enriched[0]
+
+
+def test_enrich_fills_missing_description_on_cached_series_with_detail_url() -> None:
+    """If an EventSeries already exists but has no description, LLM should be called to fill it in."""
+    session = _make_session()
+
+    # Pre-populate series with detail_url but no description (as if created by old code)
+    existing = EventSeries(
+        series_key="https://example.com/show",
+        detail_url="https://example.com/show",
+        title="Some Show",
+        venue="Theater",
+        description=None,
+        updated_at=datetime.now(tz=timezone.utc),
+    )
+    session.add(existing)
+    session.commit()
+
+    summarizer_calls = {"count": 0}
+
+    def fake_summarizer(text: str) -> str | None:
+        summarizer_calls["count"] += 1
+        return "A great show for families."
+
+    def fetch_detail(url: str) -> str:
+        return "Show page content"
+
+    events = [
+        {
+            "title": "Some Show",
+            "location": "Theater",
+            "detail_url": "https://example.com/show",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert enriched[0]["description"] == "A great show for families."
+    assert summarizer_calls["count"] == 1
+    # Description should now be persisted on the series row
+    session.refresh(existing)
+    assert existing.description == "A great show for families."
