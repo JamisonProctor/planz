@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.base import Base
 from app.db.models.event_series import EventSeries
 from app.services.extract.series_cache import enrich_with_series_cache
+from app.services.llm.summarizer import EventPageSummary
 
 
 def _make_session():
@@ -14,9 +15,9 @@ def _make_session():
     return sessionmaker(bind=engine, future=True)()
 
 
-def _identity_summarizer(text: str) -> str | None:
-    """Fake summarizer that returns the text unchanged — no LLM call."""
-    return text
+def _identity_summarizer(text: str) -> EventPageSummary | None:
+    """Fake summarizer that returns the text as summary — no LLM call."""
+    return EventPageSummary(summary=text, is_paid=False, address=None)
 
 
 def test_enrich_with_series_cache_fetches_once() -> None:
@@ -77,9 +78,9 @@ def test_enrich_sets_llm_summary_as_description() -> None:
 
     summarizer_calls = {"count": 0}
 
-    def fake_summarizer(text: str) -> str | None:
+    def fake_summarizer(text: str) -> EventPageSummary | None:
         summarizer_calls["count"] += 1
-        return "A great kids festival for ages 4-10."
+        return EventPageSummary(summary="A great kids festival for ages 4-10.", is_paid=False, address=None)
 
     events = [
         {
@@ -102,13 +103,15 @@ def test_enrich_sets_llm_summary_as_description() -> None:
 def test_enrich_uses_cached_description_without_calling_summarizer() -> None:
     session = _make_session()
 
-    # Pre-populate the series cache
+    # Pre-populate the series cache with all fields filled
     existing = EventSeries(
         series_key="https://example.com/cached",
         detail_url="https://example.com/cached",
         title="Cached Event",
         venue="Somewhere",
         description="Cached summary from a previous run.",
+        venue_address="Cached Strasse 1, 80538 München",
+        is_paid=False,
         updated_at=datetime.now(tz=timezone.utc),
     )
     session.add(existing)
@@ -116,9 +119,9 @@ def test_enrich_uses_cached_description_without_calling_summarizer() -> None:
 
     summarizer_calls = {"count": 0}
 
-    def fake_summarizer(text: str) -> str | None:
+    def fake_summarizer(text: str) -> EventPageSummary | None:
         summarizer_calls["count"] += 1
-        return "Should not be called"
+        return EventPageSummary(summary="Should not be called", is_paid=False, address=None)
 
     def fetch_detail(detail_url: str) -> str:
         return "Should not be called either"
@@ -147,7 +150,7 @@ def test_enrich_skips_description_when_summarizer_returns_none() -> None:
     def fetch_detail(detail_url: str) -> str:
         return "Some page text"
 
-    def none_summarizer(text: str) -> str | None:
+    def none_summarizer(text: str) -> EventPageSummary | None:
         return None
 
     events = [
@@ -178,6 +181,7 @@ def test_enrich_fills_missing_description_on_cached_series_with_detail_url() -> 
         title="Some Show",
         venue="Theater",
         description=None,
+        venue_address=None,
         updated_at=datetime.now(tz=timezone.utc),
     )
     session.add(existing)
@@ -185,9 +189,9 @@ def test_enrich_fills_missing_description_on_cached_series_with_detail_url() -> 
 
     summarizer_calls = {"count": 0}
 
-    def fake_summarizer(text: str) -> str | None:
+    def fake_summarizer(text: str) -> EventPageSummary | None:
         summarizer_calls["count"] += 1
-        return "A great show for families."
+        return EventPageSummary(summary="A great show for families.", is_paid=False, address=None)
 
     def fetch_detail(url: str) -> str:
         return "Show page content"
@@ -223,8 +227,8 @@ def test_enrich_sets_llm_summary_from_source_url_when_no_detail_url() -> None:
         fetched_urls.append(url)
         return "Ticket page content about the show"
 
-    def fake_summarizer(text: str) -> str | None:
-        return "A fun show for kids aged 4-8."
+    def fake_summarizer(text: str) -> EventPageSummary | None:
+        return EventPageSummary(summary="A fun show for kids aged 4-8.", is_paid=True, address=None)
 
     events = [
         {
@@ -256,6 +260,7 @@ def test_enrich_fills_missing_description_on_cached_series_without_detail_url() 
         title="🎟 Die kleine Hexe",
         venue="Theater",
         description=None,
+        venue_address=None,
         updated_at=datetime.now(tz=timezone.utc),
     )
     session.add(existing)
@@ -263,9 +268,9 @@ def test_enrich_fills_missing_description_on_cached_series_without_detail_url() 
 
     summarizer_calls = {"count": 0}
 
-    def fake_summarizer(text: str) -> str | None:
+    def fake_summarizer(text: str) -> EventPageSummary | None:
         summarizer_calls["count"] += 1
-        return "A spooky witch story for children."
+        return EventPageSummary(summary="A spooky witch story for children.", is_paid=True, address=None)
 
     def fetch_detail(url: str) -> str:
         return "Ticket page content"
@@ -288,3 +293,107 @@ def test_enrich_fills_missing_description_on_cached_series_without_detail_url() 
     assert summarizer_calls["count"] == 1
     session.refresh(existing)
     assert existing.description == "A spooky witch story for children."
+
+
+def test_enrich_propagates_is_paid_to_event_dict() -> None:
+    """is_paid=True on a series must appear in the enriched event dict."""
+    session = _make_session()
+
+    def fetch_detail(url: str) -> str:
+        return "Show page content"
+
+    def fake_summarizer(text: str) -> EventPageSummary | None:
+        return EventPageSummary(summary="A paid show.", is_paid=True, address=None)
+
+    events = [
+        {
+            "title": "Paid Show",
+            "location": "Theater",
+            "detail_url": "https://example.com/paid",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert enriched[0]["is_paid"] is True
+
+
+def test_enrich_propagates_venue_address_to_event_dict() -> None:
+    """venue_address from the series must appear in the enriched event dict."""
+    session = _make_session()
+
+    def fetch_detail(url: str) -> str:
+        return "Museum page content"
+
+    def fake_summarizer(text: str) -> EventPageSummary | None:
+        return EventPageSummary(
+            summary="A museum exhibit.", is_paid=False, address="Museumstrasse 1, 80538 München"
+        )
+
+    events = [
+        {
+            "title": "Museum Exhibit",
+            "location": "Museum",
+            "detail_url": "https://example.com/museum",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert enriched[0]["venue_address"] == "Museumstrasse 1, 80538 München"
+
+
+def test_enrich_fills_missing_venue_address_on_cached_series() -> None:
+    """Existing series with description but no venue_address should trigger re-summarize."""
+    session = _make_session()
+
+    # Pre-populate series with description but no venue_address (post-migration state)
+    existing = EventSeries(
+        series_key="https://example.com/museum",
+        detail_url="https://example.com/museum",
+        title="Museum Exhibit",
+        venue="Museum",
+        description="An existing cached description.",
+        venue_address=None,
+        updated_at=datetime.now(tz=timezone.utc),
+    )
+    session.add(existing)
+    session.commit()
+
+    summarizer_calls = {"count": 0}
+
+    def fake_summarizer(text: str) -> EventPageSummary | None:
+        summarizer_calls["count"] += 1
+        return EventPageSummary(
+            summary="Updated summary.", is_paid=False, address="Maximilianstrasse 5, 80538 München"
+        )
+
+    def fetch_detail(url: str) -> str:
+        return "Museum page content"
+
+    events = [
+        {
+            "title": "Museum Exhibit",
+            "location": "Museum",
+            "detail_url": "https://example.com/museum",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert summarizer_calls["count"] == 1
+    assert enriched[0]["venue_address"] == "Maximilianstrasse 5, 80538 München"
+    session.refresh(existing)
+    assert existing.venue_address == "Maximilianstrasse 5, 80538 München"

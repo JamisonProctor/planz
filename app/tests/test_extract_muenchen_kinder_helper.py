@@ -5,6 +5,7 @@ from app.db.base import Base
 from app.db.models.source_domain import SourceDomain
 from app.db.models.source_url import SourceUrl
 from app.scripts.extract_muenchen_kinder import (
+    _apply_paid_prefix,
     _deduplicate_events,
     _resolve_sync_limit,
     extract_detail_events_from_listing,
@@ -316,6 +317,24 @@ def test_max_items_counts_listing_items_not_expanded_rows() -> None:
 def test_resolve_sync_limit_uses_max_events_for_debug_runs() -> None:
     assert _resolve_sync_limit(None) == 200
     assert _resolve_sync_limit(3) == 3
+
+
+def test_apply_paid_prefix_adds_emoji_when_is_paid() -> None:
+    events = [{"title": "Cool Show", "is_paid": True}]
+    result = _apply_paid_prefix(events)
+    assert result[0]["title"] == "🎟 Cool Show"
+
+
+def test_apply_paid_prefix_skips_already_prefixed() -> None:
+    events = [{"title": "🎟 Cool Show", "is_paid": True}]
+    result = _apply_paid_prefix(events)
+    assert result[0]["title"] == "🎟 Cool Show"
+
+
+def test_apply_paid_prefix_skips_non_paid() -> None:
+    events = [{"title": "Free Show", "is_paid": False}]
+    result = _apply_paid_prefix(events)
+    assert result[0]["title"] == "Free Show"
 
 
 def test_deduplicate_events_removes_same_title_time_location() -> None:

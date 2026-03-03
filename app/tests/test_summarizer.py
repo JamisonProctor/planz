@@ -1,11 +1,12 @@
+import json
 from unittest.mock import MagicMock, patch
 
-from app.services.llm.summarizer import summarize_event_page
+from app.services.llm.summarizer import EventPageSummary, summarize_event_page
 
 
-def _mock_openai_response(text: str) -> MagicMock:
+def _mock_openai_response(data: dict) -> MagicMock:
     message = MagicMock()
-    message.content = text
+    message.content = json.dumps(data)
     choice = MagicMock()
     choice.message = message
     response = MagicMock()
@@ -14,7 +15,12 @@ def _mock_openai_response(text: str) -> MagicMock:
 
 
 def test_summarize_event_page_returns_summary() -> None:
-    fake_response = _mock_openai_response("A fun family event for kids aged 5-10.")
+    fake_data = {
+        "summary": "A fun family event for kids aged 5-10.",
+        "is_paid": False,
+        "address": None,
+    }
+    fake_response = _mock_openai_response(fake_data)
 
     mock_client = MagicMock()
     mock_client.chat.completions.create.return_value = fake_response
@@ -22,7 +28,48 @@ def test_summarize_event_page_returns_summary() -> None:
     with patch("app.services.llm.summarizer.OpenAI", return_value=mock_client):
         result = summarize_event_page("Some event page text about a kids festival.")
 
-    assert result == "A fun family event for kids aged 5-10."
+    assert isinstance(result, EventPageSummary)
+    assert result.summary == "A fun family event for kids aged 5-10."
+    assert result.is_paid is False
+    assert result.address is None
+
+
+def test_summarize_event_page_is_paid_true() -> None:
+    fake_data = {
+        "summary": "A ticketed theater show for children.",
+        "is_paid": True,
+        "address": None,
+    }
+    fake_response = _mock_openai_response(fake_data)
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = fake_response
+
+    with patch("app.services.llm.summarizer.OpenAI", return_value=mock_client):
+        result = summarize_event_page("Theater show page text.")
+
+    assert isinstance(result, EventPageSummary)
+    assert result.is_paid is True
+    assert result.summary == "A ticketed theater show for children."
+
+
+def test_summarize_event_page_includes_address() -> None:
+    fake_data = {
+        "summary": "A museum exhibit for families.",
+        "is_paid": False,
+        "address": "Museumstrasse 1, 80538 München",
+    }
+    fake_response = _mock_openai_response(fake_data)
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = fake_response
+
+    with patch("app.services.llm.summarizer.OpenAI", return_value=mock_client):
+        result = summarize_event_page("Museum exhibit page text.")
+
+    assert isinstance(result, EventPageSummary)
+    assert result.address == "Museumstrasse 1, 80538 München"
+    assert result.summary == "A museum exhibit for families."
 
 
 def test_summarize_event_page_returns_none_on_api_error() -> None:

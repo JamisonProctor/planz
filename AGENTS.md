@@ -242,10 +242,18 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 
 ## LLM Detail-Page Summarization (muenchen.de kinder pipeline)
 
-- After listing extraction and before DB persist, `enrich_with_series_cache` fetches each event's detail page, converts HTML to plain text, and calls the LLM summarizer to produce a 2-3 sentence English description for parents
-- Model: `gpt-4.1-nano` (cheapest GPT-4.1 family model); max_tokens=200, temperature=0.3
-- The summarizer is injected via the `summarizer` parameter of `enrich_with_series_cache` — tests must pass a fake/no-op summarizer; never make real OpenAI calls in tests
-- Summaries are cached in `EventSeries.description`; re-runs do not re-fetch or re-summarize
+- After listing extraction and before DB persist, `enrich_with_series_cache` fetches each event's detail page, converts HTML to plain text, and calls the LLM summarizer to produce structured output
+- Model: `gpt-4.1-nano` (cheapest GPT-4.1 family model); max_tokens=300, temperature=0.3; uses `response_format={"type": "json_object"}` (JSON mode)
+- `summarize_event_page` returns `EventPageSummary` dataclass with three fields:
+  - `summary`: 2-3 sentence English description for parents (target age, key appeal)
+  - `is_paid`: bool — true if event requires admission fee or ticket purchase
+  - `address`: full street address + city (e.g. "Museumstrasse 1, 80538 München"), or None if not found
+- The summarizer is injected via the `summarizer` parameter of `enrich_with_series_cache` — tests must pass a fake/no-op summarizer that returns `EventPageSummary | None`; never make real OpenAI calls in tests
+- Results are cached in `EventSeries`: `description` (summary text), `venue_address`, `is_paid`
+- Re-runs do not re-fetch or re-summarize unless `venue_address` is still None (one-time backfill trigger after migration)
+- `enrich_with_series_cache` propagates `venue_address` and `is_paid` to each enriched event dict
+- After enrichment, `extract_muenchen_kinder` calls `_apply_paid_prefix(events)` to add 🎟 prefix to any event with `is_paid=True` that doesn't already have it (unifies listing-detected and LLM-detected paid events under one code path)
+- `store_extracted_events` prefers `venue_address` over `location` for `Event.location` so Google Calendar taps open Maps with a street address
 - `extract_muenchen_kinder --no-llm` skips enrichment entirely (fast debug mode, no OpenAI calls)
 - Summarizer failures return `None` and never block the pipeline
 

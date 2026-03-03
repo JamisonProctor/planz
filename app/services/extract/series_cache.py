@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.urls import extract_domain
 from app.db.models.event_series import EventSeries
 from app.services.extract.html_to_text import HtmlToText
-from app.services.llm.summarizer import summarize_event_page
+from app.services.llm.summarizer import EventPageSummary, summarize_event_page
 
 
 def _series_key(item: dict[str, Any]) -> str:
@@ -27,7 +27,7 @@ def enrich_with_series_cache(
     events: list[dict[str, Any]],
     detail_fetcher: Callable[[str], str],
     now: datetime,
-    summarizer: Callable[[str], str | None] = summarize_event_page,
+    summarizer: Callable[[str], EventPageSummary | None] = summarize_event_page,
 ) -> list[dict[str, Any]]:
     enriched: list[dict[str, Any]] = []
     cache: dict[str, EventSeries] = {}
@@ -40,36 +40,44 @@ def enrich_with_series_cache(
         else:
             series = session.scalar(select(EventSeries).where(EventSeries.series_key == key))
             if series is None:
-                description = None
+                result: EventPageSummary | None = None
                 fetch_url = item.get("detail_url") or item.get("source_url")
                 if fetch_url:
                     page_text = html_to_text.extract(detail_fetcher(fetch_url))
-                    description = summarizer(page_text) if page_text else None
+                    result = summarizer(page_text) if page_text else None
                 series = EventSeries(
                     series_key=key,
                     detail_url=item.get("detail_url"),
                     title=item.get("title"),
                     venue=item.get("location"),
-                    description=description,
+                    description=result.summary if result else None,
+                    venue_address=result.address if result else None,
+                    is_paid=result.is_paid if result else False,
                     updated_at=now,
                 )
                 session.add(series)
                 session.flush()
-            elif series.description is None:
-                # Existing series missing summary — fill it in now
+            elif series.description is None or series.venue_address is None:
+                # Existing series missing summary or address — fill in now
                 fetch_url = series.detail_url or item.get("source_url")
                 if fetch_url:
                     page_text = html_to_text.extract(detail_fetcher(fetch_url))
                     if page_text:
-                        description = summarizer(page_text)
-                        if description:
-                            series.description = description
+                        result = summarizer(page_text)
+                        if result:
+                            if result.summary:
+                                series.description = result.summary
+                            series.venue_address = result.address
+                            series.is_paid = result.is_paid
                             session.flush()
             cache[key] = series
 
         new_item = dict(item)
         if series.description:
             new_item["description"] = series.description
+        if series.venue_address:
+            new_item["venue_address"] = series.venue_address
+        new_item["is_paid"] = series.is_paid
         enriched.append(new_item)
 
     session.commit()

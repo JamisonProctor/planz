@@ -46,7 +46,7 @@ def store_extracted_events(
         title = _as_str(item.get("title"))
         start_time = _parse_datetime(item.get("start_time"), tz)
         end_time = _parse_datetime(item.get("end_time"), tz)
-        location = _as_str(item.get("location")) or None
+        location = _as_str(item.get("venue_address")) or _as_str(item.get("location")) or None
 
         if not title or not start_time:
             logger.info(

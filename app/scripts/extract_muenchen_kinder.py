@@ -275,6 +275,15 @@ def _copy_time_to_date(source: datetime, target_date: date) -> datetime:
     )
 
 
+def _apply_paid_prefix(events: list[dict]) -> list[dict]:
+    """Add ticket emoji prefix to titles of LLM-identified paid events."""
+    for event in events:
+        title = event.get("title") or ""
+        if event.get("is_paid") and not title.startswith(TICKET_PREFIX):
+            event["title"] = f"{TICKET_PREFIX}{title}"
+    return events
+
+
 def _deduplicate_events(events: list[dict]) -> list[dict]:
     """Remove duplicate events that share the same title, start_time, and location.
 
@@ -377,6 +386,7 @@ def main() -> None:
         if args.persist and not args.no_llm:
             logger.info("Enriching events with LLM detail-page summaries...")
             all_events = enrich_with_series_cache(session, all_events, _make_detail_fetcher(), now)
+            all_events = _apply_paid_prefix(all_events)
             logger.info("Enrichment complete.")
 
         if not args.persist:
