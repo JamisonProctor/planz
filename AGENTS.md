@@ -36,7 +36,7 @@ The system is a **multi-stage pipeline**:
    - muenchen.de listings currently work with plain fetch; Playwright stays optional for JS-only sites
    - `extract_muenchen_kinder` must parse listing entries as structured occurrence rows first (title, schedule, location, ticket link) so repeated dates on the listing page are preserved instead of collapsed
    - For this source, the listing row is the canonical event record; do not use detail-page LLM extraction to invent title/date/location fields
-   - For the current no-LLM validation path, `extract_muenchen_kinder` does not call the LLM and does not depend on detail-page enrichment; calendar notes rely on the stored event URL and the calendar client appends the single “More info” link
+   - `extract_muenchen_kinder` now enriches events with LLM detail-page summaries by default (stored as `Event.description`, rendered above the “More info” link in Google Calendar); use `--no-llm` to skip this step
    - Visible listing date ranges like `03 MÄRZ bis 21 JUNI` must be expanded into one event row per calendar day, reusing the visible start/end times on each generated day when times are available
    - The current muenchen.de kids listing should be parsed from `.m-event-list-item` rows: headline text/link, the `m-event-list-item__detail` `<time datetime=...>` values for the concrete occurrence, the `.m-date-range` start/end dates for the visible span, and `.m-event-list-item__meta a` for ticket URLs
    - For muenchen.de kids events, the event detail URL (not the listing URL) is the canonical source URL used for DB rows and calendar source links
@@ -239,6 +239,15 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 - Detail pages fetched once per series; repeated dates reuse cached description
 - Cached detail descriptions must be normalized to plain text before they are stored or synced; raw HTML must not be copied into calendar notes
 - Updated lazily during extraction; prevents redundant detail fetch costs
+
+## LLM Detail-Page Summarization (muenchen.de kinder pipeline)
+
+- After listing extraction and before DB persist, `enrich_with_series_cache` fetches each event's detail page, converts HTML to plain text, and calls the LLM summarizer to produce a 2-3 sentence English description for parents
+- Model: `gpt-4.1-nano` (cheapest GPT-4.1 family model); max_tokens=200, temperature=0.3
+- The summarizer is injected via the `summarizer` parameter of `enrich_with_series_cache` — tests must pass a fake/no-op summarizer; never make real OpenAI calls in tests
+- Summaries are cached in `EventSeries.description`; re-runs do not re-fetch or re-summarize
+- `extract_muenchen_kinder --no-llm` skips enrichment entirely (fast debug mode, no OpenAI calls)
+- Summarizer failures return `None` and never block the pipeline
 
 ---
 

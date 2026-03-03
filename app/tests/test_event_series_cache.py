@@ -14,6 +14,11 @@ def _make_session():
     return sessionmaker(bind=engine, future=True)()
 
 
+def _identity_summarizer(text: str) -> str | None:
+    """Fake summarizer that returns the text unchanged — no LLM call."""
+    return text
+
+
 def test_enrich_with_series_cache_fetches_once() -> None:
     session = _make_session()
 
@@ -28,7 +33,10 @@ def test_enrich_with_series_cache_fetches_once() -> None:
         {"title": "Show", "location": "Hall", "detail_url": "https://example.com/detail", "start_time": datetime.now(tz=timezone.utc)},
     ]
 
-    enriched = enrich_with_series_cache(session, events, fetch_detail, now=datetime.now(tz=timezone.utc))
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=_identity_summarizer,
+    )
 
     descriptions = {e["description"] for e in enriched}
     assert descriptions == {"Detailed description"}
@@ -53,6 +61,107 @@ def test_enrich_with_series_cache_strips_html_from_detail_description() -> None:
         }
     ]
 
-    enriched = enrich_with_series_cache(session, events, fetch_detail, now=datetime.now(tz=timezone.utc))
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=_identity_summarizer,
+    )
 
     assert enriched[0]["description"] == "Show Family friendly fun."
+
+
+def test_enrich_sets_llm_summary_as_description() -> None:
+    session = _make_session()
+
+    def fetch_detail(detail_url: str) -> str:
+        return "Kinderfest page content"
+
+    summarizer_calls = {"count": 0}
+
+    def fake_summarizer(text: str) -> str | None:
+        summarizer_calls["count"] += 1
+        return "A great kids festival for ages 4-10."
+
+    events = [
+        {
+            "title": "Kinderfest",
+            "location": "Park",
+            "detail_url": "https://example.com/kinderfest",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert enriched[0]["description"] == "A great kids festival for ages 4-10."
+    assert summarizer_calls["count"] == 1
+
+
+def test_enrich_uses_cached_description_without_calling_summarizer() -> None:
+    session = _make_session()
+
+    # Pre-populate the series cache
+    existing = EventSeries(
+        series_key="https://example.com/cached",
+        detail_url="https://example.com/cached",
+        title="Cached Event",
+        venue="Somewhere",
+        description="Cached summary from a previous run.",
+        updated_at=datetime.now(tz=timezone.utc),
+    )
+    session.add(existing)
+    session.commit()
+
+    summarizer_calls = {"count": 0}
+
+    def fake_summarizer(text: str) -> str | None:
+        summarizer_calls["count"] += 1
+        return "Should not be called"
+
+    def fetch_detail(detail_url: str) -> str:
+        return "Should not be called either"
+
+    events = [
+        {
+            "title": "Cached Event",
+            "location": "Somewhere",
+            "detail_url": "https://example.com/cached",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=fake_summarizer,
+    )
+
+    assert enriched[0]["description"] == "Cached summary from a previous run."
+    assert summarizer_calls["count"] == 0
+
+
+def test_enrich_skips_description_when_summarizer_returns_none() -> None:
+    session = _make_session()
+
+    def fetch_detail(detail_url: str) -> str:
+        return "Some page text"
+
+    def none_summarizer(text: str) -> str | None:
+        return None
+
+    events = [
+        {
+            "title": "Event",
+            "location": "Venue",
+            "detail_url": "https://example.com/event",
+            "start_time": datetime.now(tz=timezone.utc),
+        }
+    ]
+
+    enriched = enrich_with_series_cache(
+        session, events, fetch_detail, now=datetime.now(tz=timezone.utc),
+        summarizer=none_summarizer,
+    )
+
+    assert "description" not in enriched[0]

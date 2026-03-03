@@ -9,6 +9,7 @@ from app.core.env import load_env
 from app.db.migrations.sqlite import ensure_sqlite_schema
 from app.db.session import engine, get_session
 from app.logging import configure_logging
+from app.services.extract.series_cache import enrich_with_series_cache
 from app.services.extract.store_extracted_events import store_extracted_events
 from app.services.extract.muenchen_listing_parser import parse_listing
 from app.services.fetch.http_fetcher import fetch_url_text
@@ -75,7 +76,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip calendar sync (for dry runs or data-only refresh)",
     )
+    parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="Skip LLM detail-page summarization (fast debug mode)",
+    )
     return parser
+
+
+def _make_detail_fetcher():
+    """Return a fetcher that accepts a URL and returns plain text (wraps fetch_url_text)."""
+
+    def fetcher(url: str) -> str:
+        text, _error, _status = fetch_url_text(url)
+        return text or ""
+
+    return fetcher
 
 
 def record_manual_discovery(session, source_url: SourceUrl) -> None:
@@ -331,6 +347,12 @@ def main() -> None:
             run_stats.append(stats)
 
         logger.info("Extracted raw events: %s", len(all_events))
+
+        if args.persist and not args.no_llm:
+            logger.info("Enriching events with LLM detail-page summaries...")
+            all_events = enrich_with_series_cache(session, all_events, _make_detail_fetcher(), now)
+            logger.info("Enrichment complete.")
+
         if not args.persist:
             overall_timer.__exit__(None, None, None)
             totals = RunStats.combine(run_stats)
