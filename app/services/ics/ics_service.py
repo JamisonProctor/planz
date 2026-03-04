@@ -11,11 +11,11 @@ from app.db.models.event import Event
 BERLIN = ZoneInfo("Europe/Berlin")
 
 
-def build_ics(events: list[Event]) -> bytes:
+def build_ics(events: list[Event], cal_name: str = "Munich Kids Events") -> bytes:
     cal = Calendar()
     cal.add("PRODID", "-//PLANZ//planz//EN")
     cal.add("VERSION", "2.0")
-    cal.add("X-WR-CALNAME", "Munich Kids Events")
+    cal.add("X-WR-CALNAME", cal_name)
     cal.add("REFRESH-INTERVAL;VALUE=DURATION", "PT6H")
     cal.add("METHOD", "PUBLISH")
 

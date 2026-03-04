@@ -53,12 +53,13 @@ def enrich_with_series_cache(
                     description=result.summary if result else None,
                     venue_address=result.address if result else None,
                     is_paid=result.is_paid if result else False,
+                    category=result.category if result else None,
                     updated_at=now,
                 )
                 session.add(series)
                 session.flush()
-            elif series.description is None or series.venue_address is None:
-                # Existing series missing summary or address — fill in now
+            elif series.description is None or series.venue_address is None or series.category is None:
+                # Existing series missing summary, address, or category — fill in now
                 fetch_url = series.detail_url or item.get("source_url")
                 if fetch_url:
                     page_text = html_to_text.extract(detail_fetcher(fetch_url))
@@ -69,6 +70,7 @@ def enrich_with_series_cache(
                                 series.description = result.summary
                             series.venue_address = result.address
                             series.is_paid = result.is_paid
+                            series.category = result.category
                             session.flush()
             cache[key] = series
 
@@ -78,6 +80,7 @@ def enrich_with_series_cache(
         if series.venue_address:
             new_item["venue_address"] = series.venue_address
         new_item["is_paid"] = series.is_paid
+        new_item["category"] = series.category
         enriched.append(new_item)
 
     session.commit()

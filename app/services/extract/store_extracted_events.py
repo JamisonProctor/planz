@@ -75,6 +75,8 @@ def store_extracted_events(
                     derived["detail_url"] = item.get("detail_url")
                 if item.get("ticket_url"):
                     derived["ticket_url"] = item.get("ticket_url")
+                derived["is_paid"] = item.get("is_paid", False)
+                derived["category"] = item.get("category")
         else:
             derived_events = [
                 {
@@ -87,6 +89,8 @@ def store_extracted_events(
                     "detail_url": item.get("detail_url"),
                     "ticket_url": item.get("ticket_url"),
                     "is_calendar_candidate": item.get("is_calendar_candidate", True),
+                    "is_paid": item.get("is_paid", False),
+                    "category": item.get("category"),
                 }
             ]
 
@@ -123,6 +127,8 @@ def store_extracted_events(
                     source_url=_event_source_url(derived, derived["source_url"]),
                     external_key=external_key,
                     is_calendar_candidate=derived.get("is_calendar_candidate", True),
+                    is_paid=derived.get("is_paid", False),
+                    category=derived.get("category"),
                 )
                 session.add(event)
                 event_cache[external_key] = event
@@ -185,7 +191,7 @@ def _truncate_item(item: Any, limit: int = 200) -> str:
 
 def _apply_updates(existing: Event, derived: dict[str, Any]) -> bool:
     changed = False
-    for field in ["title", "start_time", "end_time", "location", "description", "source_url", "is_calendar_candidate"]:
+    for field in ["title", "start_time", "end_time", "location", "description", "source_url", "is_calendar_candidate", "is_paid", "category"]:
         if field == "source_url":
             new_val = _event_source_url(derived, existing.source_url or "")
         elif field in derived:

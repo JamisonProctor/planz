@@ -30,12 +30,19 @@ def ensure_sqlite_schema(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE events ADD COLUMN is_calendar_candidate BOOLEAN NOT NULL DEFAULT 1"))
             if "google_event_id" not in event_columns:
                 conn.execute(text("ALTER TABLE events ADD COLUMN google_event_id VARCHAR(255)"))
+        if event_columns:
+            if "category" not in event_columns:
+                conn.execute(text("ALTER TABLE events ADD COLUMN category VARCHAR(50)"))
+            if "is_paid" not in event_columns:
+                conn.execute(text("ALTER TABLE events ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT 0"))
         series_columns = _get_columns(conn, "event_series")
         if series_columns:
             if "venue_address" not in series_columns:
                 conn.execute(text("ALTER TABLE event_series ADD COLUMN venue_address TEXT"))
             if "is_paid" not in series_columns:
                 conn.execute(text("ALTER TABLE event_series ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT 0"))
+            if "category" not in series_columns:
+                conn.execute(text("ALTER TABLE event_series ADD COLUMN category TEXT"))
 
     Base.metadata.create_all(engine)
     ensure_external_keys(engine)

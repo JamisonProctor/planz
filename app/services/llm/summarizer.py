@@ -13,15 +13,25 @@ _MODEL = "gpt-4.1-nano"
 _MAX_INPUT_CHARS = 4000
 _SYSTEM_PROMPT = (
     "You are a helpful assistant for parents in Munich. "
-    "Return a JSON object with exactly three fields:\n"
+    "Return a JSON object with exactly four fields:\n"
     '- "summary": 2-3 sentences in English describing the event for parents, including target age range and key family appeal\n'
     '- "is_paid": true if the event requires an admission fee or ticket purchase; '
     'German indicators include: "Karten", "Eintrittskarten", "Eintritt", "Tickets", '
     '"Abendkasse", "kostenpflichtig", "Ticketpreis", "VVK", "Vorverkauf"; '
     'set false only if the page explicitly states it is free ("kostenlos", "freier Eintritt", "Eintritt frei")\n'
     '- "address": the full street address and city (e.g. "Museumstrasse 1, 80538 München"), or null if not found\n'
+    '- "category": one of "theater", "museum", "workshop", "outdoor", "sport", "concert", "other"\n'
+    '  theater: stage shows, puppet theater, circus, dance performances, musicals\n'
+    '  museum: museum visits, exhibitions, guided tours, galleries\n'
+    '  workshop: hands-on making/craft/art/science activities, courses\n'
+    '  outdoor: park events, nature hikes, playgrounds, outdoor festivals, zoos\n'
+    '  sport: sport activities, swimming, climbing, gymnastics, tournaments\n'
+    '  concert: music concerts, choir, orchestra events for children\n'
+    '  other: anything that doesn\'t fit the above\n'
     "Return only valid JSON. Do not include any other text."
 )
+
+_VALID_CATEGORIES = {"theater", "museum", "workshop", "outdoor", "sport", "concert", "other"}
 
 
 @dataclass
@@ -29,6 +39,7 @@ class EventPageSummary:
     summary: str
     is_paid: bool
     address: str | None
+    category: str | None = None
 
 
 def summarize_event_page(text: str) -> EventPageSummary | None:
@@ -61,7 +72,9 @@ def summarize_event_page(text: str) -> EventPageSummary | None:
         address = data.get("address")
         if not isinstance(address, str):
             address = None
-        return EventPageSummary(summary=summary.strip(), is_paid=is_paid, address=address)
+        category_raw = data.get("category")
+        category = category_raw if category_raw in _VALID_CATEGORIES else "other"
+        return EventPageSummary(summary=summary.strip(), is_paid=is_paid, address=address, category=category)
     except Exception:
         logger.exception("LLM summarization failed")
         return None

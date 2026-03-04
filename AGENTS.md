@@ -235,14 +235,15 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 
 ## ICS Feed Server
 
-The FastAPI app exposes a live ICS calendar feed at `GET /events.ics`.
+The FastAPI app exposes live ICS calendar feeds with category and paid/free filtering.
 
-- Serves all `Event` rows where `is_calendar_candidate=True` and `end_time >= now`, ordered by `start_time ASC`
+- `GET /events.ics` — all events; accepts `?category=<name>` and `?paid=true|false` query params
+- Convenience routes: `/events/free.ics`, `/events/paid.ics`, `/events/theater.ics`, `/events/museum.ics`, `/events/workshop.ics`, `/events/outdoor.ics`, `/events/sport.ics`, `/events/concert.ics`
 - Returns `text/calendar; charset=utf-8` — any calendar app can subscribe via `webcal://your-host.com/events.ics`
 - **Optional token auth:** set `ICS_FEED_TOKEN` in `.env`; requests must include `?token=<value>`. Leave empty for a public feed.
 - **Stable UIDs:** each VEVENT UID is `sha256(external_key)[:16]@planz` — deterministic across regenerations so calendar apps detect updates rather than duplicates
 - **Refresh hint:** `REFRESH-INTERVAL;VALUE=DURATION:PT6H` tells clients to poll every 6 hours
-- `build_ics(events)` in `app/services/ics/ics_service.py` is a pure function — no DB access, fully testable with fake objects
+- `build_ics(events, cal_name="Munich Kids Events")` in `app/services/ics/ics_service.py` is a pure function — no DB access, fully testable with fake objects
 - Google Calendar push code (`app/services/calendar/`) is unchanged and still usable as an optional tool
 - Tests for the ICS service are in `app/tests/test_ics_service.py` — no DB, no network, fake event objects via `SimpleNamespace`
 
@@ -255,9 +256,65 @@ venv/bin/python -m pytest app/tests/test_ics_service.py --tb=short -q
 # Start server
 venv/bin/uvicorn app.main:app --port 8000
 
-# Fetch feed
+# Fetch feeds
 curl -s http://localhost:8000/events.ics | head -20
+curl -s "http://localhost:8000/events.ics?category=theater" | grep SUMMARY | head -5
+curl -s http://localhost:8000/events/free.ics | head -5
+curl -s "http://localhost:8000/events.ics?category=bad"  # returns 400
 ```
+
+---
+
+## Docker Architecture
+
+Two-container setup for production:
+
+| Container | Role |
+|---|---|
+| `web` | Always-on FastAPI server (reads DB, serves ICS + web UI) |
+| `worker` | One-shot weekly pipeline (Playwright + OpenAI) |
+
+- `Dockerfile` has two build targets: `web` (lean) and `worker` (+ Playwright)
+- `docker-compose.yml`: `web` restarts always; `worker` has `profiles: [worker]` (run on demand)
+- DB lives at `./data/planz.db` mounted as a volume; WAL mode enabled for concurrent reads during worker writes
+- Run worker: `docker compose --profile worker run --rm worker`
+- Optional Cloudflare tunnel: `docker compose --profile tunnel up cloudflared`
+- Default `DATABASE_URL` changed to `sqlite:///./data/planz.db`; override via `.env` or env var
+
+---
+
+## Event Categories
+
+- `Event.category` (VARCHAR 50, nullable) and `Event.is_paid` (BOOLEAN, default False) are stored on `Event` for efficient single-table ICS filtering
+- `EventSeries.category` (TEXT, nullable) is stored and propagated to linked events
+- Valid categories defined in `app/domain/constants.EVENT_CATEGORIES`: `theater`, `museum`, `workshop`, `outdoor`, `sport`, `concert`, `other`
+- LLM summarizer (`summarize_event_page`) returns a 4th field `category`; invalid/missing LLM output defaults to `"other"`
+- `enrich_with_series_cache` propagates `category` from `EventSeries` to enriched event dicts
+- `store_extracted_events` writes `is_paid` and `category` to `Event` on both create and update
+- Backfill scripts: `app/scripts/backfill_event_paid.py` (copies `EventSeries.is_paid → Event.is_paid`) and `app/scripts/backfill_categories.py` (LLM categorizes series by description)
+
+---
+
+## User Accounts + Personalized Feeds
+
+- `User` (id, email, password_hash, created_at) — one per subscriber
+- `FeedToken` (id, user_id, token, created_at) — unique 64-char hex token per user; used in feed URL
+- `UserPreference` (id, user_id, selected_categories JSON, include_paid, include_free) — per-user filter settings
+- Auth service in `app/services/auth/auth_service.py`: bcrypt password hashing, `itsdangerous` URLSafeTimedSerializer session cookies (30-day expiry)
+- `SECRET_KEY` config setting required; defaults to `"change-me-in-production"` — must be overridden in production
+- Personalized feed: `GET /feed/{token}/events.ics` applies user's category + paid/free filters
+- New models imported in `app/db/models/__init__.py` so `Base.metadata.create_all` creates tables automatically
+
+---
+
+## Web UI
+
+- Jinja2 templates in `app/templates/`; routes in `app/api/ui.py`
+- Routes: `GET/POST /signup`, `GET/POST /login`, `POST /logout`, `GET/POST /setup`, `GET /connect`, `GET/POST /settings`
+- Auth-required routes redirect unauthenticated users to `/login` (HTTP 303)
+- All POST routes follow Post-Redirect-Get pattern
+- Design: inline CSS, `system-ui` font, `#2563eb` blue accent, max-width 500px, mobile-responsive
+- `python-multipart` required for `Form(...)` — listed in `requirements.txt`
 
 ---
 
@@ -272,14 +329,15 @@ curl -s http://localhost:8000/events.ics | head -20
 
 - After listing extraction and before DB persist, `enrich_with_series_cache` fetches each event's detail page, converts HTML to plain text, and calls the LLM summarizer to produce structured output
 - Model: `gpt-4.1-nano` (cheapest GPT-4.1 family model); max_tokens=300, temperature=0.3; uses `response_format={"type": "json_object"}` (JSON mode)
-- `summarize_event_page` returns `EventPageSummary` dataclass with three fields:
+- `summarize_event_page` returns `EventPageSummary` dataclass with **four** fields:
   - `summary`: 2-3 sentence English description for parents (target age, key appeal)
   - `is_paid`: bool — true if event requires admission fee or ticket purchase
   - `address`: full street address + city (e.g. "Museumstrasse 1, 80538 München"), or None if not found
+  - `category`: one of the valid EVENT_CATEGORIES; invalid/missing LLM output defaults to `"other"`
 - The summarizer is injected via the `summarizer` parameter of `enrich_with_series_cache` — tests must pass a fake/no-op summarizer that returns `EventPageSummary | None`; never make real OpenAI calls in tests
-- Results are cached in `EventSeries`: `description` (summary text), `venue_address`, `is_paid`
-- Re-runs do not re-fetch or re-summarize unless `venue_address` is still None (one-time backfill trigger after migration)
-- `enrich_with_series_cache` propagates `venue_address` and `is_paid` to each enriched event dict
+- Results are cached in `EventSeries`: `description` (summary text), `venue_address`, `is_paid`, `category`
+- Re-runs do not re-fetch or re-summarize unless `venue_address` or `category` is still None (one-time backfill trigger after migration)
+- `enrich_with_series_cache` propagates `venue_address`, `is_paid`, and `category` to each enriched event dict
 - After enrichment, `extract_muenchen_kinder` calls `_apply_paid_prefix(events)` to add 🎟 prefix to any event with `is_paid=True` that doesn't already have it (unifies listing-detected and LLM-detected paid events under one code path)
 - `store_extracted_events` prefers `venue_address` over `location` for `Event.location` so Google Calendar taps open Maps with a street address
 - `extract_muenchen_kinder --no-llm` skips enrichment entirely (fast debug mode, no OpenAI calls)

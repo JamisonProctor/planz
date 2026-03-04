@@ -1,0 +1,13 @@
+.git
+__pycache__
+*.pyc
+.pytest_cache
+venv/
+planz.db
+data/
+.env
+credentials.json
+token.json
+*.md
+.coverage
+.DS_Store

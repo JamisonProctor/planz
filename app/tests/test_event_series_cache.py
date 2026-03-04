@@ -112,6 +112,7 @@ def test_enrich_uses_cached_description_without_calling_summarizer() -> None:
         description="Cached summary from a previous run.",
         venue_address="Cached Strasse 1, 80538 München",
         is_paid=False,
+        category="theater",
         updated_at=datetime.now(tz=timezone.utc),
     )
     session.add(existing)

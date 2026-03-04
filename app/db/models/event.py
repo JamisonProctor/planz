@@ -27,6 +27,8 @@ class Event(Base):
     external_key: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
     is_calendar_candidate: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     google_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(tz=timezone.utc),
