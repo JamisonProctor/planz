@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Set up your feed — PLANZ{% endblock %}
+{% block content %}
+<h1>Set up your feed</h1>
+<p>Choose which events appear in your personal calendar.</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+<form method="post" action="/setup">
+  <div class="card">
+    <h2>Categories</h2>
+    <div class="checkbox-grid">
+      {% for cat, icon in categories %}
+      <div class="checkbox-item">
+        <input type="checkbox" id="cat_{{ cat }}" name="categories" value="{{ cat }}"
+               {% if cat in selected_categories %}checked{% endif %}>
+        <label for="cat_{{ cat }}">{{ icon }} {{ cat | capitalize }}</label>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Event type</h2>
+    <div class="toggle-row">
+      <input type="checkbox" id="include_free" name="include_free" value="1"
+             {% if include_free %}checked{% endif %}>
+      <label for="include_free">Include free events</label>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="include_paid" name="include_paid" value="1"
+             {% if include_paid %}checked{% endif %}>
+      <label for="include_paid">Include paid events</label>
+    </div>
+  </div>
+
+  <button type="submit" class="btn">Save &amp; continue</button>
+</form>
+{% endblock %}

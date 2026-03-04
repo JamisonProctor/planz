@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Munich Kids Events Calendar — PLANZ{% endblock %}
+{% block content %}
+<h1>Munich Kids Events, in your calendar</h1>
+<p>Subscribe to a live feed of kids events in Munich — filtered by category, free or paid. Your calendar app stays up to date automatically.</p>
+
+<div class="card">
+  <h2>Category feeds</h2>
+  <div class="checkbox-grid" style="margin-bottom:0">
+    {% for cat, icon in categories %}
+    <div class="checkbox-item" style="cursor:default">
+      <span>{{ icon }}</span>
+      <span>{{ cat | capitalize }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Quick subscribe</h2>
+  <p>Use a public feed, or sign up for a personalized one that remembers your preferences.</p>
+  <a href="/signup" class="btn">Sign up free</a>
+  <span style="margin-left:12px" class="text-muted">or <a href="/events.ics">browse all events</a></span>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Settings — PLANZ{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if success %}<div class="success">{{ success }}</div>{% endif %}
+
+<div class="card">
+  <h2>Your feed URL</h2>
+  <div class="code-box">webcal://{{ host }}/feed/{{ token }}/events.ics</div>
+  <a href="/connect" class="btn btn-secondary btn-sm">Connection instructions</a>
+</div>
+
+<form method="post" action="/settings">
+  <div class="card">
+    <h2>Categories</h2>
+    <div class="checkbox-grid">
+      {% for cat, icon in categories %}
+      <div class="checkbox-item">
+        <input type="checkbox" id="cat_{{ cat }}" name="categories" value="{{ cat }}"
+               {% if cat in selected_categories %}checked{% endif %}>
+        <label for="cat_{{ cat }}">{{ icon }} {{ cat | capitalize }}</label>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Event type</h2>
+    <div class="toggle-row">
+      <input type="checkbox" id="include_free" name="include_free" value="1"
+             {% if include_free %}checked{% endif %}>
+      <label for="include_free">Include free events</label>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="include_paid" name="include_paid" value="1"
+             {% if include_paid %}checked{% endif %}>
+      <label for="include_paid">Include paid events</label>
+    </div>
+  </div>
+
+  <button type="submit" class="btn">Save preferences</button>
+</form>
+{% endblock %}

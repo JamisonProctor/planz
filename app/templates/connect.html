@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Connect your calendar — PLANZ{% endblock %}
+{% block content %}
+<h1>Connect your calendar</h1>
+<p>Add your personal Munich Kids Events feed to Apple Calendar, Google Calendar, or any app that supports iCal.</p>
+
+<div class="card">
+  <h2>Your feed URL</h2>
+  <div class="code-box">webcal://{{ host }}/feed/{{ token }}/events.ics</div>
+  <a href="webcal://{{ host }}/feed/{{ token }}/events.ics" class="btn">Open in calendar app</a>
+</div>
+
+<div class="card">
+  <h2>Apple Calendar</h2>
+  <p>Click "Open in calendar app" above, or go to <strong>File → New Calendar Subscription</strong> and paste the URL.</p>
+</div>
+
+<div class="card">
+  <h2>Google Calendar</h2>
+  <p>Go to <strong>Other calendars → From URL</strong> and paste the URL (replace <code>webcal://</code> with <code>https://</code>).</p>
+</div>
+
+<p class="mt-16"><a href="/settings">← Back to settings</a></p>
+{% endblock %}
