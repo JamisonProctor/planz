@@ -233,6 +233,34 @@ SQLite schema changes are not automatic. Any new columns or tables must include 
 
 ---
 
+## ICS Feed Server
+
+The FastAPI app exposes a live ICS calendar feed at `GET /events.ics`.
+
+- Serves all `Event` rows where `is_calendar_candidate=True` and `end_time >= now`, ordered by `start_time ASC`
+- Returns `text/calendar; charset=utf-8` — any calendar app can subscribe via `webcal://your-host.com/events.ics`
+- **Optional token auth:** set `ICS_FEED_TOKEN` in `.env`; requests must include `?token=<value>`. Leave empty for a public feed.
+- **Stable UIDs:** each VEVENT UID is `sha256(external_key)[:16]@planz` — deterministic across regenerations so calendar apps detect updates rather than duplicates
+- **Refresh hint:** `REFRESH-INTERVAL;VALUE=DURATION:PT6H` tells clients to poll every 6 hours
+- `build_ics(events)` in `app/services/ics/ics_service.py` is a pure function — no DB access, fully testable with fake objects
+- Google Calendar push code (`app/services/calendar/`) is unchanged and still usable as an optional tool
+- Tests for the ICS service are in `app/tests/test_ics_service.py` — no DB, no network, fake event objects via `SimpleNamespace`
+
+### Quick verification
+
+```bash
+# Run tests
+venv/bin/python -m pytest app/tests/test_ics_service.py --tb=short -q
+
+# Start server
+venv/bin/uvicorn app.main:app --port 8000
+
+# Fetch feed
+curl -s http://localhost:8000/events.ics | head -20
+```
+
+---
+
 ## Series Cache
 
 - EventSeries caches detail pages by series_key (detail_url preferred, else domain+title+location)

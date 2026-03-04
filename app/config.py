@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     GOOGLE_CALENDAR_ID: str = "primary"
     GOOGLE_TOKEN_PATH: str = "./token.json"
     GOOGLE_CREDENTIALS_PATH: str = "./credentials.json"
+    ICS_FEED_TOKEN: str = ""  # empty = public feed; set to require ?token=<value>
 
 
 settings = Settings()
